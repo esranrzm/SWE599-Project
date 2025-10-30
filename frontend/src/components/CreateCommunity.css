@@ -1,0 +1,25 @@
+.create-community {
+  min-height: calc(100vh - 60px);
+  background: #ffffff;
+  padding: 2rem 1rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.create-community-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  padding: 2rem;
+  width: 100%;
+  max-width: 800px;
+}
+
+.create-title {
+  margin: 0;
+  color: #111827;
+}
+
+

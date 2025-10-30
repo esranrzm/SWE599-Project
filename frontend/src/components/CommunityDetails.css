@@ -1,0 +1,30 @@
+.community-details {
+  min-height: calc(100vh - 60px);
+  background: #ffffff;
+  padding: 2rem 1rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.community-details-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  padding: 2rem;
+  width: 100%;
+  max-width: 800px;
+}
+
+.details-title {
+  margin: 0 0 1rem 0;
+  color: #111827;
+}
+
+.details-description {
+  color: #374151;
+  line-height: 1.7;
+}
+
+

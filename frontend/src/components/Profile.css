@@ -1,0 +1,210 @@
+.profile-page {
+  min-height: calc(100vh - 60px);
+  background: #fff;
+  padding: 2rem 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+.profile-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+  padding: 2.5rem 2rem 2rem 2rem;
+  min-width: 300px;
+  max-width: 450px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.profile-photo-box { margin-bottom: 2rem; }
+.profile-photo {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 50%;
+  background: #e5e7eb;
+  border: 2px solid #d1d5db;
+  box-shadow: 0 2px 6px rgba(99,102,241,0.07);
+}
+.profile-details {
+  width: 100%;
+  margin-bottom: 2rem;
+}
+.profile-row {
+  font-size: 1rem;
+  color: #22223b;
+  margin-bottom: 0.7rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.profile-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+.profile-btn {
+  padding: 0.7rem 0;
+  border-radius: 7px;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  background: #f3f4f6;
+  color: #111827;
+  transition: background 0.2s, color 0.2s;
+}
+.profile-btn:focus {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+.edit-btn {
+  background: #2563eb;
+  color: #fff;
+}
+.edit-btn:hover,
+.edit-btn:focus {
+  background: #1d4ed8;
+}
+.password-btn {
+  background: #4b5563;
+  color: #fff;
+}
+.password-btn:hover,
+.password-btn:focus {
+  background: #374151;
+}
+.delete-btn {
+  background: #b91c1c;
+  color: #fff;
+}
+.delete-btn:hover,
+.delete-btn:focus {
+  background: #991b1b;
+}
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 10000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background: rgba(0,0,0,0.08);
+}
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  max-width: 420px; /* wider dialog */
+  min-width: 290px;
+  width: 100%;
+  margin-top: 4vh;
+  padding: 2rem 1.5rem 1.5rem 1.5rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.19);
+  position: relative;
+  z-index: 2;
+}
+.modal-title { margin: 0 0 1.25rem 0; }
+.modal-form .form-row {
+  margin-bottom: 1.25rem; /* more space between fields */
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem; /* more space between label and input */
+}
+.modal-form label {
+  font-weight: 500;
+  color: #374151;
+  font-size: 1rem;
+  white-space: nowrap; /* keep label on one line */
+}
+.modal-form input[type="text"],
+.modal-form input[type="email"],
+.modal-form input[type="date"] {
+  border: 1.5px solid #cbd5e1;
+  border-radius: 7px;
+  padding: 0.5rem;
+  font-size: 1rem;
+  background: #f9fafb;
+  color: #0f172a;
+  margin-top: 0.15rem;
+}
+.modal-form input[type='file'] {
+  margin-top: 0.45rem;
+}
+.modal-photo-preview {
+  margin-left: 0.4rem;
+  margin-top: 0.4rem;
+  width: 54px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 1px solid #b0b6ba;
+  background: #e5e7eb;
+}
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center; /* buttons closer together, right-aligned */
+  margin-top: 1.5rem;
+}
+.modal-btn {
+  padding: 0.6rem 1.65rem;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: filter 0.18s, background 0.18s;
+}
+.cancel-btn {
+  background: #18181b;
+  color: #fff;
+}
+.save-btn {
+  background: #2563eb;
+  color: #fff;
+}
+.cancel-btn:focus, .save-btn:focus { outline: 2px solid #6366f1; }
+.modal-blur {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  filter: blur(2.5px);
+}
+.pwd-input-container {
+  position: relative;
+}
+.pwd-input {
+  width: 100%;
+  padding: 0.6rem 2.25rem 0.6rem 0.6rem;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 7px;
+  background: #f9fafb;
+  font-size: 1rem;
+}
+.pwd-toggle {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+}
+.error-text {
+  color: #dc2626;
+  margin-top: 0.25rem;
+  font-size: 0.92rem;
+}
+.gray-btn { background: #6b7280; color: #fff; }
+.gray-btn:hover, .gray-btn:focus { background: #4b5563; }
+.danger-btn { background: #991b1b; color: #fff; }
+.danger-btn:hover, .danger-btn:focus { background: #7f1d1d; }
