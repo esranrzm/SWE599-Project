@@ -1,11 +1,12 @@
  import { useState, useEffect } from 'react'
 import Header from './components/Header'
-import Login from './components/Login'
-import Registration from './components/Registration'
-import MainScreen from './components/MainScreen'
-import CommunityDetails from './components/CommunityDetails'
-import CreateCommunity from './components/CreateCommunity'
-import Profile from './components/Profile';
+import Login from './components/auth/Login'
+import Registration from './components/auth/Registration'
+import MainScreen from './components/community/MainScreen'
+import CommunityDetails from './components/community/CommunityDetails'
+import CreateCommunity from './components/community/CreateCommunity'
+import Profile from './components/profile/Profile';
+import MyCommunities from './components/community/MyCommunities';
 import avatarDefault from './assets/avatar-default.svg';
 import './App.css'
 
@@ -50,6 +51,14 @@ function App() {
       }
       if (path.startsWith('/register')) {
         setCurrentView('registration')
+        return
+      }
+      if (path.startsWith('/my-communities')) {
+        setCurrentView('myCommunities')
+        return
+      }
+      if (path.startsWith('/profile')) {
+        setCurrentView('profile')
         return
       }
       setCurrentView('main')
@@ -120,6 +129,11 @@ function App() {
     window.history.pushState({view:'profile'}, '', '/profile');
   };
 
+  const handleSelectMyCommunities = () => {
+    setCurrentView('myCommunities');
+    window.history.pushState({ view: 'myCommunities' }, '', '/my-communities');
+  };
+
   const handleSaveProfile = (updated) => {
     setUserProfile(updated);
   };
@@ -132,6 +146,8 @@ function App() {
         return <Registration onNavigateToLogin={handleNavigateToLogin} onRegister={handleProfileRegistration} />
       case 'main':
         return <MainScreen onOpenCommunity={handleOpenCommunity} />
+      case 'myCommunities':
+        return <MyCommunities onOpenCommunity={handleOpenCommunity} />
       case 'profile':
         return <Profile user={userProfile} onSaveProfile={handleSaveProfile} onDeleteAccount={handleLogout} />;
       case 'communityDetails':
@@ -148,6 +164,7 @@ function App() {
       <Header isLoggedIn={isLoggedIn} onLogout={handleLogout}
         onCreateCommunity={handleCreateCommunity}
         onSelectProfile={handleSelectProfile}
+        onSelectMyCommunities={handleSelectMyCommunities}
       />
       {renderCurrentView()}
     </div>
