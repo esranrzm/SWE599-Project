@@ -7,6 +7,8 @@ import CommunityDetails from './components/community/CommunityDetails'
 import CreateCommunity from './components/community/CreateCommunity'
 import Profile from './components/profile/Profile';
 import MyCommunities from './components/community/MyCommunities';
+import AllUsers from './components/AllUsers';
+import OtherUserProfile from './components/OtherUserProfile';
 import avatarDefault from './assets/avatar-default.svg';
 import './App.css'
 
@@ -15,6 +17,7 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [selectedCommunity, setSelectedCommunity] = useState(null)
   const [userProfile, setUserProfile] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(null);
 
   // Sync URL <-> view on load and on back/forward
   useEffect(() => {
@@ -59,6 +62,28 @@ function App() {
       }
       if (path.startsWith('/profile')) {
         setCurrentView('profile')
+        return
+      }
+      if (path.startsWith('/users')) {
+        setCurrentView('allUsers')
+        return
+      }
+      if (path.startsWith('/user/')) {
+        const username = path.replace('/user/', '')
+        setSelectedUser((prev) => {
+          if (prev && prev.username === username) return prev;
+          // For now, create a placeholder
+          return {
+            id: Math.random(),
+            username: username,
+            name: 'User',
+            surname: 'Name',
+            profession: 'Profession',
+            email: `${username}@example.com`,
+            dateOfBirth: '2000-01-01',
+          };
+        });
+        setCurrentView('otherUserProfile')
         return
       }
       setCurrentView('main')
@@ -138,6 +163,17 @@ function App() {
     setUserProfile(updated);
   };
 
+  const handleSelectAllUsers = () => {
+    setCurrentView('allUsers');
+    window.history.pushState({ view: 'allUsers' }, '', '/users');
+  };
+
+  const handleSelectUser = (user) => {
+    setSelectedUser(user);
+    setCurrentView('otherUserProfile');
+    window.history.pushState({ view: 'otherUserProfile', username: user.username }, '', `/user/${user.username}`);
+  };
+
   const renderCurrentView = () => {
     switch (currentView) {
       case 'login':
@@ -154,6 +190,10 @@ function App() {
         return <CommunityDetails community={selectedCommunity} />
       case 'createCommunity':
         return <CreateCommunity />
+      case 'allUsers':
+        return <AllUsers onSelectUser={handleSelectUser} />
+      case 'otherUserProfile':
+        return <OtherUserProfile user={selectedUser} onOpenCommunity={handleOpenCommunity} />
       default:
         return <Login onNavigateToRegister={handleNavigateToRegister} onLogin={handleLogin} />
     }
@@ -165,6 +205,7 @@ function App() {
         onCreateCommunity={handleCreateCommunity}
         onSelectProfile={handleSelectProfile}
         onSelectMyCommunities={handleSelectMyCommunities}
+        onSelectAllUsers={handleSelectAllUsers}
       />
       {renderCurrentView()}
     </div>

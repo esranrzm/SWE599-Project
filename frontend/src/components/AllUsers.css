@@ -1,0 +1,179 @@
+.all-users-page {
+  min-height: calc(100vh - 60px);
+  background: #ffffff;
+  padding: 2rem 1rem;
+}
+
+.all-users-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.all-users-header {
+  margin-bottom: 2rem;
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.all-users-title {
+  font-size: 2.5rem;
+  color: #2c3e50;
+  margin-bottom: 2rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.search-section {
+  margin-bottom: 2rem;
+  display: flex;
+  justify-content: center;
+}
+
+.search-input-container {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.75rem 3rem 0.75rem 1rem;
+  border: 2px solid #e1e8ed;
+  border-radius: 8px;
+  font-size: 1rem;
+  background-color: #f8f9fa;
+  transition: all 0.3s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  background-color: white;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.search-icon {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6b7280;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+.users-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+  animation: fadeInUp 0.8s ease-out;
+}
+
+.user-card {
+  background: #f3f4f6;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  border: 1px solid #e5e7eb;
+  cursor: pointer;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.user-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+.user-card-photo {
+  margin-bottom: 1rem;
+}
+
+.user-photo {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 50%;
+  background: #e5e7eb;
+  border: 2px solid #d1d5db;
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.07);
+}
+
+.user-card-info {
+  width: 100%;
+}
+
+.user-card-username {
+  color: #2c3e50;
+  font-size: 1.2rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.user-card-name {
+  color: #7f8c8d;
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+}
+
+.user-card-profession {
+  color: #6b7280;
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.no-results {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6b7280;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .all-users-page {
+    padding: 1rem 0.5rem;
+  }
+  
+  .all-users-title {
+    font-size: 2rem;
+  }
+
+  .search-input-container {
+    max-width: 100%;
+  }
+  
+  .users-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem;
+  }
+  
+  .user-card {
+    padding: 1.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .all-users-title {
+    font-size: 1.75rem;
+  }
+  
+  .users-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

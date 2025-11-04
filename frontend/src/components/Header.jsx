@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './Header.css';
 
-const Header = ({ isLoggedIn, onLogout, onCreateCommunity, onSelectProfile, onSelectMyCommunities }) => {
+const Header = ({ isLoggedIn, onLogout, onCreateCommunity, onSelectProfile, onSelectMyCommunities, onSelectAllUsers }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -34,6 +34,14 @@ const Header = ({ isLoggedIn, onLogout, onCreateCommunity, onSelectProfile, onSe
         
         {isLoggedIn && (
           <div className="header-right" ref={dropdownRef}>
+            <button 
+              className="create-button"
+              onClick={onSelectAllUsers}
+              aria-label="ComHub Users"
+            >
+              ComHub Users
+            </button>
+            
             <button 
               className="create-button"
               onClick={onCreateCommunity}
