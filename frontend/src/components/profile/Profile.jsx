@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import avatarDefault from '../assets/avatar-default.svg';
+import avatarDefault from '../../assets/avatar-default.svg';
 import './Profile.css';
 
 const Profile = ({ user, onEditProfile, onUpdatePassword, onDeleteAccount, onChangePhoto, onSaveProfile }) => {
@@ -222,3 +222,4 @@ const Profile = ({ user, onEditProfile, onUpdatePassword, onDeleteAccount, onCha
 };
 
 export default Profile;
+

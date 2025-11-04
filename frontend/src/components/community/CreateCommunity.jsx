@@ -13,4 +13,3 @@ const CreateCommunity = () => {
 
 export default CreateCommunity;
 
-

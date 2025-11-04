@@ -136,3 +136,4 @@ const Login = ({ onNavigateToRegister, onLogin }) => {
 };
 
 export default Login;
+

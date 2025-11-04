@@ -1,4 +1,4 @@
-.login-container {
+.registration-container {
   min-height: calc(100vh - 60px);
   display: flex;
   align-items: center;
@@ -7,14 +7,14 @@
   background: #ffffff;
 }
 
-.login-card {
+.registration-card {
   background: white;
   border-radius: 12px;
   border: 1px solid #e5e7eb; /* subtle border */
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08); /* card elevation */
   padding: 2rem;
   width: 100%;
-  max-width: 400px;
+  max-width: 600px;
   animation: slideUp 0.3s ease-out;
 }
 
@@ -29,7 +29,7 @@
   }
 }
 
-.login-title {
+.registration-title {
   text-align: center;
   margin-bottom: 2rem;
   color: #2c3e50;
@@ -37,10 +37,16 @@
   font-weight: 600;
 }
 
-.login-form {
+.registration-form {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
 }
 
 .form-group {
@@ -108,13 +114,40 @@
   color: #4b5563; /* slightly darker gray on hover */
 }
 
+.checkbox-group {
+  margin-top: 0.5rem;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.checkbox-input {
+  margin: 0;
+  width: 18px;
+  height: 18px;
+  accent-color: #667eea;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.checkbox-text {
+  color: #2c3e50;
+  font-size: 0.9rem;
+  user-select: none;
+}
+
 .error-message {
   color: #e74c3c;
   font-size: 0.85rem;
   margin-top: 0.25rem;
 }
 
-.login-button {
+.register-button {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
@@ -127,16 +160,16 @@
   margin-top: 0.5rem;
 }
 
-.login-button:hover {
+.register-button:hover {
   transform: translateY(-2px);
   box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
 }
 
-.login-button:active {
+.register-button:active {
   transform: translateY(0);
 }
 
-.login-footer {
+.registration-footer {
   text-align: center;
   margin-top: 1.5rem;
   color: #7f8c8d;
@@ -156,16 +189,46 @@
   color: #764ba2;
 }
 
-@media (max-width: 480px) {
-  .login-container {
+.profile-preview {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+}
+.profile-preview-img {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #e5e7eb;
+  border: 1px solid #d1d5db;
+}
+
+@media (max-width: 768px) {
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  
+  .registration-container {
     padding: 1rem 0.5rem;
   }
   
-  .login-card {
+  .registration-card {
     padding: 1.5rem;
   }
   
-  .login-title {
+  .registration-title {
     font-size: 1.5rem;
   }
 }
+
+@media (max-width: 480px) {
+  .registration-container {
+    padding: 0.5rem;
+  }
+  
+  .registration-card {
+    padding: 1rem;
+  }
+}
+

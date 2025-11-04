@@ -17,4 +17,3 @@ const CommunityDetails = ({ community }) => {
 
 export default CommunityDetails;
 
-

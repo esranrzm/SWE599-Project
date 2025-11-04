@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import './Registration.css';
-import avatarDefault from '../assets/avatar-default.svg';
+import avatarDefault from '../../assets/avatar-default.svg';
 
 const Registration = ({ onNavigateToLogin, onRegister }) => {
   const [formData, setFormData] = useState({
@@ -349,3 +349,4 @@ const Registration = ({ onNavigateToLogin, onRegister }) => {
 };
 
 export default Registration;
+
