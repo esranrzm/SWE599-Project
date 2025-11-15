@@ -4,15 +4,107 @@ import './MainScreen.css';
 const MainScreen = ({ onOpenCommunity }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
-  const allCards = useMemo(() => {
-    const lorem =
-      'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris pharetra, sem eget bibendum congue, neque orci porttitor nunc, vitae feugiat velit neque sit amet arcu. Integer laoreet, purus a tempor pulvinar, arcu eros lacinia massa, non interdum libero nibh eu risus. ';
-    return Array.from({ length: 15 }).map((_, i) => ({
-      id: i + 1,
-      title: `Community ${i + 1}`,
-      description: lorem.repeat(((i % 3) + 1)),
-    }));
-  }, []);
+  const allCards = useMemo(
+    () => [
+      {
+        id: 1,
+        title: 'Van School Rebuild Collective',
+        description:
+          'Parents and civil engineers coordinate drives for chairs, whiteboards, chalk, pens, and pencils while recruiting volunteer carpenters and masons to partner with contractors rebuilding the Derebahçe primary school after the winter storm collapse.',
+      },
+      {
+        id: 2,
+        title: 'Istanbul Climate Lab',
+        description:
+          'Meteorology students and city planners model Bosphorus microclimates together and produced an open-source flood readiness toolkit now piloted by the Kadıköy municipality.',
+      },
+      {
+        id: 3,
+        title: 'Bursa Makers Market',
+        description:
+          'Local artisans coordinate pop-up fairs in Nilüfer, sharing supplier tips and negotiating packaging discounts that supported 42 sellers during the 2025 Ramadan market season.',
+      },
+      {
+        id: 4,
+        title: 'Aegean Coastal Cleanup Crew',
+        description:
+          'Volunteer divers and kayakers organize quarterly shoreline cleanups from Çeşme to Kuşadası and have logged 18 tons of waste removed since 2022 with transparent impact dashboards.',
+      },
+      {
+        id: 5,
+        title: 'Anatolian Data Storytellers',
+        description:
+          'Journalists and analysts collaborate on regional datasets, publishing a bilingual housing affordability report cited by Anadolu Agency in May 2025.',
+      },
+      {
+        id: 6,
+        title: 'Cappadocia Astronomy Circle',
+        description:
+          'Hosts stargazing nights near Uçhisar, lending telescopes to local schools and curating a dark-sky guide for visiting campers.',
+      },
+      {
+        id: 7,
+        title: 'Trabzon Heritage Kitchen',
+        description:
+          'Food historians digitize Black Sea family recipes and recently launched livestream cooking classes featuring grandmothers from Sürmene.',
+      },
+      {
+        id: 8,
+        title: 'Women in Rail Türkiye',
+        description:
+          'Engineers and conductors mentor students, arranging job-shadow days with TCDD and securing 12 internship placements last summer.',
+      },
+      {
+        id: 9,
+        title: 'Van Lake Wildlife Watch',
+        description:
+          'Citizen scientists track waterbird migration and maintain a shared dataset that WWF Türkiye uses to plan wetland restoration.',
+      },
+      {
+        id: 10,
+        title: 'Ankara Tech Innovators',
+        description:
+          'Runs monthly hardware hack nights at Bilkent Cyberpark, where volunteers prototype civic tech solutions like low-cost air-quality sensors deployed across Çankaya in spring 2024.',
+      },
+      {
+        id: 11,
+        title: 'Eskişehir Game Dev Guild',
+        description:
+          'Indie developers host playtest evenings at Atatürk Culture Centre and shipped four mobile titles showcased during the 2025 Indie Expo.',
+      },
+      {
+        id: 12,
+        title: 'Mediterranean Film Exchange',
+        description:
+          'Filmmakers share equipment and critique sessions, coordinating a short-film residency aligned with the Antalya Golden Orange Festival.',
+      },
+      {
+        id: 13,
+        title: 'Black Sea Trail Runners',
+        description:
+          'Organizes sunrise trail runs and safety clinics while maintaining a route-mapping app for beginner-friendly segments near Rize.',
+      },
+      {
+        id: 14,
+        title: 'Inclusive Design Ankara',
+        description:
+          'UX professionals run accessibility audits for NGOs and delivered volunteer training to the Turkish Red Crescent digital team in February 2025.',
+      },
+      {
+        id: 15,
+        title: 'Izmir Circular Fashion Hub',
+        description:
+          'Designers experiment with textile recycling and operate a fabric swap library that now serves 300 members across Konak.',
+      },
+      {
+        id: 16,
+        title: 'Gaziantep Robotics League',
+        description:
+          'High school mentors support FIRST Tech Challenge teams and helped rebuild lab space after the 2023 earthquakes using donated equipment.',
+      },
+    ],
+    [],
+  );
 
   const filteredCards = useMemo(() => {
     if (!searchQuery.trim()) {

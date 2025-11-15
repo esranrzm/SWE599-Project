@@ -15,12 +15,52 @@ const OtherUserProfile = ({ user, onOpenCommunity }) => {
 
   // Mock user's communities data
   const userCommunities = useMemo(() => {
-    const lorem = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris pharetra, sem eget bibendum congue, neque orci porttitor nunc, vitae feugiat velit neque sit amet arcu. ';
-    
-    return Array.from({ length: 8 }).map((_, i) => ({
-      id: i + 1,
-      title: `${user.username}'s Community ${i + 1}`,
-      description: lorem.repeat((i % 3) + 2),
+    const communities = [
+      {
+        title: `${user.username} • Youth Coding Lab`,
+        description:
+          'Weekly after-school program at Çankaya Science Center where volunteers help teens build dashboards for the Ankara Marathon charity drive.',
+      },
+      {
+        title: `${user.username} • Open Streets Ankara`,
+        description:
+          'Coordinates Sunday bike rides with Ankara Metropolitan Municipality and introduced traffic-calming pop-ups along Tunalı Hilmi in April 2025.',
+      },
+      {
+        title: `${user.username} • Refugee Language Exchange`,
+        description:
+          'Matches Turkish and Syrian neighbors for conversation hours, collecting 600 vocabulary cards published online for newcomers.',
+      },
+      {
+        title: `${user.username} • Sustainable Campus Forum`,
+        description:
+          'Brings together student clubs tracking energy use and secured a grant to retrofit dormitory lighting with smart sensors in autumn 2024.',
+      },
+      {
+        title: `${user.username} • Community Science Nights`,
+        description:
+          'Hosts hands-on experiments in local libraries and partnered with TED University physics faculty to demo low-cost lab kits.',
+      },
+      {
+        title: `${user.username} • Inclusive Design Roundtable`,
+        description:
+          'Runs quarterly critiques for accessibility advocates and produced a shared checklist now adopted by three Ankara NGOs.',
+      },
+      {
+        title: `${user.username} • Civic Data Commons`,
+        description:
+          'Maintains open datasets on public transit punctuality while volunteers built dashboards highlighting late-night service gaps after citizen feedback.',
+      },
+      {
+        title: `${user.username} • Tech for Heritage Labs`,
+        description:
+          'Digitizes historical archives with 3D scanning weekends and collaborated with the Museum of Anatolian Civilizations on a virtual exhibit.',
+      },
+    ];
+
+    return communities.map((community, index) => ({
+      id: index + 1,
+      ...community,
     }));
   }, [user.username]);
 
