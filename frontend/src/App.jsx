@@ -10,25 +10,82 @@ import MyCommunities from './components/community/MyCommunities';
 import AllUsers from './components/AllUsers';
 import OtherUserProfile from './components/OtherUserProfile';
 import avatarDefault from './assets/avatar-default.svg';
+import { logoutUser, removeToken, checkSession, getToken } from './services/api';
 import './App.css'
 
 function App() {
   const [currentView, setCurrentView] = useState('login')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [isLoading, setIsLoading] = useState(true) // Loading state for session check
   const [selectedCommunity, setSelectedCommunity] = useState(null)
   const [userProfile, setUserProfile] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
 
+  // Check for existing session on app load
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        setIsLoading(true);
+        const token = getToken();
+        
+        if (token) {
+          // Try to restore session
+          const userData = await checkSession();
+          if (userData) {
+            // Valid session found - restore user state
+            console.log('Session restored:', userData);
+            setUserProfile(userData);
+            setIsLoggedIn(true);
+            
+            // Navigate to appropriate view based on URL
+            const path = window.location.pathname;
+            if (path === '/' || path === '/main') {
+              setCurrentView('main');
+              window.history.replaceState({ view: 'main' }, '', '/main');
+            } else {
+              // Let the route handler decide
+              setCurrentView('main'); // Default to main if logged in
+            }
+          } else {
+            // Invalid token - clear it and navigate to login
+            console.log('No valid session found - navigating to login');
+            setIsLoggedIn(false);
+            setCurrentView('login');
+            window.history.replaceState({ view: 'login' }, '', '/');
+          }
+        } else {
+          // No token - navigate to login
+          console.log('No auth token found - navigating to login');
+          setIsLoggedIn(false);
+          setCurrentView('login');
+          window.history.replaceState({ view: 'login' }, '', '/');
+        }
+      } catch (error) {
+        console.error('Error restoring session:', error);
+        setIsLoggedIn(false);
+        setCurrentView('login');
+        window.history.replaceState({ view: 'login' }, '', '/');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    restoreSession();
+  }, []); // Run once on mount
+
   // Sync URL <-> view on load and on back/forward
   useEffect(() => {
+    if (isLoading) return; // Don't apply routes while checking session
+    
     const applyRoute = () => {
       const path = window.location.pathname
       if (!isLoggedIn) {
-        // Only allow login/registration when logged out
+        // If not logged in, always redirect to login (unless on registration)
         if (path.startsWith('/register')) {
           setCurrentView('registration')
           return
         }
+        // Navigate to login page
         setCurrentView('login')
         if (path !== '/') {
           window.history.replaceState({ view: 'login' }, '', '/')
@@ -98,7 +155,7 @@ function App() {
     return () => {
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [isLoggedIn])
+  }, [isLoggedIn, isLoading])
 
   const handleNavigateToRegister = () => {
     setCurrentView('registration')
@@ -110,16 +167,32 @@ function App() {
     window.history.pushState({ view: 'login' }, '', '/')
   }
 
-  const handleLogin = () => {
+  const handleLogin = (userData = null) => {
     setIsLoggedIn(true)
+    
+    // If user data is provided from API, store it
+    if (userData) {
+      setUserProfile(userData)
+    }
+    
     setCurrentView('main')
     // Push state to history to allow back navigation
     window.history.pushState({ view: 'main' }, '', '/main')
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Call backend logout endpoint to blacklist token
+    try {
+      await logoutUser();
+    } catch (error) {
+      console.error('Logout API error:', error);
+      // Even if API call fails, proceed with frontend logout
+      removeToken();
+    }
+    
     setIsLoggedIn(false)
     setCurrentView('login')
+    setUserProfile(null)
     // Replace current history entry to prevent back navigation to main screen
     window.history.replaceState({ view: 'login' }, '', '/')
   }
@@ -135,10 +208,9 @@ function App() {
     window.history.pushState({ view: 'createCommunity' }, '', '/community/create')
   }
 
-  const handleProfileRegistration = (formData) => {
-    // Remove password fields from registration data before saving to userProfile
-    const { password, confirmPassword, ...profileData } = formData;
-    setUserProfile(profileData);
+  const handleProfileRegistration = (userData) => {
+    // userData comes from API response (already has user info without passwords)
+    setUserProfile(userData);
     setIsLoggedIn(true)
     setCurrentView('main')
     window.history.pushState({ view: 'main' }, '', '/main')
@@ -175,6 +247,21 @@ function App() {
   };
 
   const renderCurrentView = () => {
+    // Show loading while checking session
+    if (isLoading) {
+      return (
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          height: '100vh',
+          fontSize: '1.1rem'
+        }}>
+          Loading...
+        </div>
+      );
+    }
+
     switch (currentView) {
       case 'login':
         return <Login onNavigateToRegister={handleNavigateToRegister} onLogin={handleLogin} />
