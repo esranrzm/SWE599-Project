@@ -27,10 +27,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 def get_db():
-    """
-    Database dependency for FastAPI routes.
-    Yields a database session and ensures it's closed after use.
-    """
     db = SessionLocal()
     try:
         yield db

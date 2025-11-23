@@ -3,14 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 
-from app.routers import auth
+from app.routers import auth, communities
 from app.database import engine, Base
 
 # Load environment variables
 load_dotenv()
 
 # Import models to ensure they're registered with Base
-from app.models import User, BlacklistedToken  # noqa: F401
+from app.models import User, BlacklistedToken, Community  # noqa: F401
 
 # Create database tables automatically when the app starts
 # Note: The DATABASE must exist in PostgreSQL first (create it manually or use scripts/create_database.py)
@@ -31,6 +31,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
+app.include_router(communities.router, prefix="/api/communities", tags=["communities"])
 
 @app.get("/")
 def root():

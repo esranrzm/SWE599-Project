@@ -232,4 +232,261 @@ export const logoutUser = async () => {
   }
 };
 
+/**
+ * Create a new community
+ * @param {Object} communityData - Community data (title, description)
+ * @returns {Promise<Object>} Created community data
+ */
+export const createCommunity = async (communityData) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/communities/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: communityData.title,
+        description: communityData.description
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to create community');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Create community error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all communities with optional pagination
+ * @param {Object} options - Pagination options (skip, limit)
+ * @returns {Promise<Array>} Array of communities
+ */
+export const getAllCommunities = async (options = {}) => {
+  try {
+    const { skip = 0, limit = 100 } = options;
+    const queryParams = new URLSearchParams();
+    if (skip > 0) queryParams.append('skip', skip);
+    if (limit !== 100) queryParams.append('limit', limit);
+
+    const queryString = queryParams.toString();
+    const url = `${API_BASE_URL}/communities/${queryString ? `?${queryString}` : ''}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch communities');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get all communities error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get communities created by the current user
+ * @param {Object} options - Pagination options (skip, limit)
+ * @returns {Promise<Array>} Array of communities created by current user
+ */
+export const getMyCommunities = async (options = {}) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const { skip = 0, limit = 100 } = options;
+    const queryParams = new URLSearchParams();
+    if (skip > 0) queryParams.append('skip', skip);
+    if (limit !== 100) queryParams.append('limit', limit);
+
+    const queryString = queryParams.toString();
+    const url = `${API_BASE_URL}/communities/me/created${queryString ? `?${queryString}` : ''}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch your communities');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get my communities error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get communities created by other users
+ * @param {Object} options - Pagination options (skip, limit)
+ * @returns {Promise<Array>} Array of communities created by other users
+ */
+export const getOthersCommunities = async (options = {}) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const { skip = 0, limit = 100 } = options;
+    const queryParams = new URLSearchParams();
+    if (skip > 0) queryParams.append('skip', skip);
+    if (limit !== 100) queryParams.append('limit', limit);
+
+    const queryString = queryParams.toString();
+    const url = `${API_BASE_URL}/communities/me/others${queryString ? `?${queryString}` : ''}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch others\' communities');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get others communities error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get a community by ID
+ * @param {number} communityId - Community ID
+ * @returns {Promise<Object>} Community data
+ */
+export const getCommunityById = async (communityId) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/communities/${communityId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch community');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get community by ID error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update a community by ID
+ * @param {number} communityId - Community ID
+ * @param {Object} communityData - Updated community data (title, description)
+ * @returns {Promise<Object>} Updated community data
+ */
+export const updateCommunity = async (communityId, communityData) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/communities/${communityId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: communityData.title,
+        description: communityData.description
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to update community');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Update community error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a community by ID
+ * @param {number} communityId - Community ID
+ * @returns {Promise<Object>} Success message
+ */
+export const deleteCommunity = async (communityId) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/communities/${communityId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to delete community');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Delete community error:', error);
+    throw error;
+  }
+};
+
 
