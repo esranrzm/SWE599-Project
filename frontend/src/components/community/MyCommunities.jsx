@@ -1,40 +1,66 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import './MyCommunities.css';
+import { getAllCommunities, getMyCommunities } from '../../services/api';
 
 const MyCommunities = ({ onOpenCommunity }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSection, setActiveSection] = useState('all'); // 'created', 'contributed', 'all'
+  const [allCommunities, setAllCommunities] = useState([]);
+  const [myCommunities, setMyCommunities] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Mock data - in a real app, this would come from API/state
-  const allCards = useMemo(() => {
-    const lorem = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris pharetra, sem eget bibendum congue, neque orci porttitor nunc, vitae feugiat velit neque sit amet arcu. Integer laoreet, purus a tempor pulvinar, arcu eros lacinia massa, non interdum libero nibh eu risus. ';
-    
-    const created = Array.from({ length: 5 }).map((_, i) => ({
-      id: `created-${i + 1}`,
-      title: `My Community ${i + 1}`,
-      description: lorem.repeat(((i % 3) + 1)),
-      type: 'created'
-    }));
+  // Fetch communities based on active section
+  useEffect(() => {
+    const fetchCommunities = async () => {
+      setIsLoading(true);
+      setError(null);
 
-    const contributed = Array.from({ length: 8 }).map((_, i) => ({
-      id: `contributed-${i + 1}`,
-      title: `Contributed Community ${i + 1}`,
-      description: lorem.repeat(((i % 3) + 1)),
-      type: 'contributed'
-    }));
+      try {
+        // Fetch all communities and my communities data
+        // Note: Contributed section will be empty for now (will be connected to community inputs later)
+        const [allData, myData] = await Promise.all([
+          getAllCommunities(),
+          getMyCommunities()
+        ]);
 
-    return { created, contributed };
-  }, []);
+        // Map API responses to expected format
+        const mapCommunity = (community) => ({
+          id: community.id,
+          title: community.title,
+          description: community.description,
+          creator: community.creator_name,
+          creator_id: community.creator_id,
+          createdAt: community.created_at,
+          updatedAt: community.updated_at,
+        });
+
+        setAllCommunities(allData.map(mapCommunity));
+        setMyCommunities(myData.map(mapCommunity));
+        // Contributed section left empty for now - will be connected to community inputs later
+      } catch (err) {
+        console.error('Error fetching communities:', err);
+        setError(err.message || 'Failed to load communities. Please try again.');
+        setAllCommunities([]);
+        setMyCommunities([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCommunities();
+  }, []); // Fetch once on mount
 
   const filteredCards = useMemo(() => {
     let cardsToShow = [];
     
     if (activeSection === 'created') {
-      cardsToShow = allCards.created;
+      cardsToShow = myCommunities;
     } else if (activeSection === 'contributed') {
-      cardsToShow = allCards.contributed;
+      // Contributed section is empty for now - will be connected to community inputs later
+      cardsToShow = [];
     } else {
-      cardsToShow = [...allCards.created, ...allCards.contributed];
+      cardsToShow = allCommunities;
     }
 
     if (!searchQuery.trim()) {
@@ -46,7 +72,7 @@ const MyCommunities = ({ onOpenCommunity }) => {
       card.title.toLowerCase().includes(query) ||
       card.description.toLowerCase().includes(query)
     );
-  }, [activeSection, searchQuery, allCards]);
+  }, [activeSection, searchQuery, allCommunities, myCommunities]);
 
   const truncate = (text, max) => (text.length > max ? text.slice(0, max) + '…' : text);
 
@@ -99,29 +125,57 @@ const MyCommunities = ({ onOpenCommunity }) => {
           </div>
         </div>
 
-        <div className="communities-cards">
-          {filteredCards.length > 0 ? (
-            filteredCards.map(card => (
-              <button
-                key={card.id}
-                type="button"
-                className="community-card card-button"
-                onClick={() => {
-                  console.log(card.title);
-                  onOpenCommunity && onOpenCommunity(card);
-                }}
-                aria-label={`Open ${card.title}`}
-              >
-                <h3>{card.title}</h3>
-                <p>{truncate(card.description, 200)}</p>
-              </button>
-            ))
-          ) : (
-            <div className="no-results">
-              <p>No communities found matching your search.</p>
-            </div>
-          )}
-        </div>
+        {error && (
+          <div className="error-message" style={{
+            padding: '12px',
+            marginBottom: '20px',
+            backgroundColor: '#fee',
+            color: '#c33',
+            borderRadius: '4px',
+            border: '1px solid #fcc'
+          }}>
+            {error}
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="loading-message" style={{
+            padding: '40px',
+            textAlign: 'center',
+            fontSize: '1.1rem',
+            color: '#666'
+          }}>
+            Loading communities...
+          </div>
+        ) : (
+          <div className="communities-cards">
+            {filteredCards.length > 0 ? (
+              filteredCards.map(card => (
+                <button
+                  key={card.id}
+                  type="button"
+                  className="community-card card-button"
+                  onClick={() => {
+                    console.log(card.title);
+                    onOpenCommunity && onOpenCommunity(card);
+                  }}
+                  aria-label={`Open ${card.title}`}
+                >
+                  <h3>{card.title}</h3>
+                  <p>{truncate(card.description, 200)}</p>
+                </button>
+              ))
+            ) : (
+              <div className="no-results">
+                <p>
+                  {activeSection === 'contributed' 
+                    ? 'Contributed section will be available once community inputs are implemented.' 
+                    : `No communities found${searchQuery.trim() ? ' matching your search' : activeSection === 'created' ? ' created by you' : ''}.`}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

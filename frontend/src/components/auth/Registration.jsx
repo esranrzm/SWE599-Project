@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './Registration.css';
 import avatarDefault from '../../assets/avatar-default.svg';
+import { registerUser, storeToken } from '../../services/api';
 
 const Registration = ({ onNavigateToLogin, onRegister }) => {
   const [formData, setFormData] = useState({
@@ -19,6 +20,8 @@ const Registration = ({ onNavigateToLogin, onRegister }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
 
   const handleInputChange = (e) => {
     const { name, value, type, checked, files } = e.target;
@@ -102,15 +105,48 @@ const Registration = ({ onNavigateToLogin, onRegister }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setApiError(''); // Clear previous errors
     
     if (validateForm()) {
-      // Remove preview property before submit.
-      const { photoPreview, ...pureForm } = formData;
-      // Pass all data, including photo as File (handle later in App state)
-      onRegister && onRegister(pureForm);
-      alert('Registration successful!');
+      setLoading(true);
+      
+      try {
+        // Remove preview property before submit
+        const { photoPreview, confirmPassword, ...registrationData } = formData;
+        
+        // Handle photo - for now we'll send null, can be enhanced later for file upload
+        const dataToSend = {
+          ...registrationData,
+          photo: null // TODO: Handle file upload separately
+        };
+        
+        const response = await registerUser(dataToSend);
+        
+        // Store the token
+        storeToken(response.access_token);
+        
+        // Store user data and pass to parent
+        if (response.user) {
+          // Update user profile in parent component
+          onRegister && onRegister(response.user);
+          alert('Registration successful!');
+        } else {
+          onRegister && onRegister(registrationData);
+          alert('Registration successful!');
+        }
+      } catch (error) {
+        // Handle API errors
+        const errorMessage = error.message || 'Registration failed. Please try again.';
+        setApiError(errorMessage);
+        setErrors({
+          ...errors,
+          api: errorMessage
+        });
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -128,6 +164,19 @@ const Registration = ({ onNavigateToLogin, onRegister }) => {
         <h2 className="registration-title">Create Account</h2>
         
         <form onSubmit={handleSubmit} className="registration-form">
+          {apiError && (
+            <div className="error-message" style={{ 
+              marginBottom: '1rem', 
+              padding: '0.75rem', 
+              backgroundColor: '#fee', 
+              border: '1px solid #fcc',
+              borderRadius: '4px',
+              color: '#c33'
+            }}>
+              {apiError}
+            </div>
+          )}
+          
           {/* Profile photo */}
           <div className="form-row">
             <div className="form-group">
@@ -326,8 +375,8 @@ const Registration = ({ onNavigateToLogin, onRegister }) => {
             {errors.consent && <span className="error-message">{errors.consent}</span>}
           </div>
 
-          <button type="submit" className="register-button">
-            Create Account
+          <button type="submit" className="register-button" disabled={loading}>
+            {loading ? 'Creating Account...' : 'Create Account'}
           </button>
         </form>
 

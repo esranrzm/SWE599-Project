@@ -1,17 +1,42 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import './MainScreen.css';
+import { getAllCommunities } from '../../services/api';
 
 const MainScreen = ({ onOpenCommunity }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [allCards, setAllCards] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const allCards = useMemo(() => {
-    const lorem =
-      'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris pharetra, sem eget bibendum congue, neque orci porttitor nunc, vitae feugiat velit neque sit amet arcu. Integer laoreet, purus a tempor pulvinar, arcu eros lacinia massa, non interdum libero nibh eu risus. ';
-    return Array.from({ length: 15 }).map((_, i) => ({
-      id: i + 1,
-      title: `Community ${i + 1}`,
-      description: lorem.repeat(((i % 3) + 1)),
-    }));
+  useEffect(() => {
+    const fetchCommunities = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const communities = await getAllCommunities();
+        
+        // Map API response to match the expected format
+        const mappedCommunities = communities.map(community => ({
+          id: community.id,
+          title: community.title,
+          description: community.description,
+          creator: community.creator_name,
+          creator_id: community.creator_id,
+          createdAt: community.created_at,
+          updatedAt: community.updated_at,
+        }));
+        
+        setAllCards(mappedCommunities);
+      } catch (err) {
+        console.error('Error fetching communities:', err);
+        setError(err.message || 'Failed to load communities. Please try again.');
+        setAllCards([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCommunities();
   }, []);
 
   const filteredCards = useMemo(() => {
@@ -56,29 +81,53 @@ const MainScreen = ({ onOpenCommunity }) => {
           </div>
         </div>
         
-        <div className="dashboard-cards">
-          {filteredCards.length > 0 ? (
-            filteredCards.map(card => (
-              <button
-                key={card.id}
-                type="button"
-                className="dashboard-card card-button"
-                onClick={() => {
-                  console.log(card.title);
-                  onOpenCommunity && onOpenCommunity(card);
-                }}
-                aria-label={`Open ${card.title}`}
-              >
-                <h3>{card.title}</h3>
-                <p>{truncate(card.description, 200)}</p>
-              </button>
-            ))
-          ) : (
-            <div className="no-results">
-              <p>No communities found matching your search.</p>
-            </div>
-          )}
-        </div>
+        {error && (
+          <div className="error-message" style={{
+            padding: '12px',
+            marginBottom: '20px',
+            backgroundColor: '#fee',
+            color: '#c33',
+            borderRadius: '4px',
+            border: '1px solid #fcc'
+          }}>
+            {error}
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="loading-message" style={{
+            padding: '40px',
+            textAlign: 'center',
+            fontSize: '1.1rem',
+            color: '#666'
+          }}>
+            Loading communities...
+          </div>
+        ) : (
+          <div className="dashboard-cards">
+            {filteredCards.length > 0 ? (
+              filteredCards.map(card => (
+                <button
+                  key={card.id}
+                  type="button"
+                  className="dashboard-card card-button"
+                  onClick={() => {
+                    console.log(card.title);
+                    onOpenCommunity && onOpenCommunity(card);
+                  }}
+                  aria-label={`Open ${card.title}`}
+                >
+                  <h3>{card.title}</h3>
+                  <p>{truncate(card.description, 200)}</p>
+                </button>
+              ))
+            ) : (
+              <div className="no-results">
+                <p>No communities found matching your search.</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

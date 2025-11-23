@@ -10,25 +10,83 @@ import MyCommunities from './components/community/MyCommunities';
 import AllUsers from './components/AllUsers';
 import OtherUserProfile from './components/OtherUserProfile';
 import avatarDefault from './assets/avatar-default.svg';
+import { logoutUser, removeToken, checkSession, getToken, getCommunityById } from './services/api';
 import './App.css'
 
 function App() {
   const [currentView, setCurrentView] = useState('login')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [isLoading, setIsLoading] = useState(true) // Loading state for session check
   const [selectedCommunity, setSelectedCommunity] = useState(null)
   const [userProfile, setUserProfile] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
+
+  // Check for existing session on app load
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        setIsLoading(true);
+        const token = getToken();
+        
+        if (token) {
+          // Try to restore session
+          const userData = await checkSession();
+          if (userData) {
+            // Valid session found - restore user state
+            console.log('Session restored:', userData);
+            setUserProfile(userData);
+            setIsLoggedIn(true);
+            
+            // Navigate to appropriate view based on URL
+            const path = window.location.pathname;
+            if (path === '/' || path === '/main') {
+              setCurrentView('main');
+              window.history.replaceState({ view: 'main' }, '', '/main');
+            } else {
+              // Let the route handler decide
+              setCurrentView('main'); // Default to main if logged in
+            }
+          } else {
+            // Invalid token - clear it and navigate to login
+            console.log('No valid session found - navigating to login');
+            setIsLoggedIn(false);
+            setCurrentView('login');
+            window.history.replaceState({ view: 'login' }, '', '/');
+          }
+        } else {
+          // No token - navigate to login
+          console.log('No auth token found - navigating to login');
+          setIsLoggedIn(false);
+          setCurrentView('login');
+          window.history.replaceState({ view: 'login' }, '', '/');
+        }
+      } catch (error) {
+        console.error('Error restoring session:', error);
+        setIsLoggedIn(false);
+        setCurrentView('login');
+        window.history.replaceState({ view: 'login' }, '', '/');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    restoreSession();
+  }, []); // Run once on mount
 
   // Sync URL <-> view on load and on back/forward
   useEffect(() => {
+    if (isLoading) return; // Don't apply routes while checking session
+    
     const applyRoute = () => {
       const path = window.location.pathname
       if (!isLoggedIn) {
-        // Only allow login/registration when logged out
+        // If not logged in, always redirect to login (unless on registration)
         if (path.startsWith('/register')) {
           setCurrentView('registration')
           return
         }
+        // Navigate to login page
         setCurrentView('login')
         if (path !== '/') {
           window.history.replaceState({ view: 'login' }, '', '/')
@@ -44,12 +102,35 @@ function App() {
         setCurrentView('createCommunity')
         return
       }
-      if (path.startsWith('/community/')) {
+      if (path.startsWith('/community/') && !path.startsWith('/community/create')) {
         const idStr = path.replace('/community/', '')
         const id = parseInt(idStr, 10)
-        // If reloading details, we do not have the data; keep placeholder
-        setSelectedCommunity((prev) => prev && prev.id === id ? prev : { id, title: `Community ${id}`, description: 'No description provided.' })
+        // Set view first, then fetch data
         setCurrentView('communityDetails')
+        // Try to fetch community data if we don't have it or it's a different ID
+        if (!selectedCommunity || selectedCommunity.id !== id) {
+          // Fetch community from API
+          const fetchCommunity = async () => {
+            try {
+              const community = await getCommunityById(id);
+              const mappedCommunity = {
+                id: community.id,
+                title: community.title,
+                description: community.description,
+                creator: community.creator_name,
+                creator_id: community.creator_id,
+                createdAt: community.created_at,
+                updatedAt: community.updated_at,
+              };
+              setSelectedCommunity(mappedCommunity);
+            } catch (err) {
+              console.error('Error fetching community:', err);
+              // Fallback to placeholder
+              setSelectedCommunity({ id, title: `Community ${id}`, description: 'No description provided.' });
+            }
+          };
+          fetchCommunity();
+        }
         return
       }
       if (path.startsWith('/register')) {
@@ -98,7 +179,7 @@ function App() {
     return () => {
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [isLoggedIn])
+  }, [isLoggedIn, isLoading])
 
   const handleNavigateToRegister = () => {
     setCurrentView('registration')
@@ -110,16 +191,32 @@ function App() {
     window.history.pushState({ view: 'login' }, '', '/')
   }
 
-  const handleLogin = () => {
+  const handleLogin = (userData = null) => {
     setIsLoggedIn(true)
+    
+    // If user data is provided from API, store it
+    if (userData) {
+      setUserProfile(userData)
+    }
+    
     setCurrentView('main')
     // Push state to history to allow back navigation
     window.history.pushState({ view: 'main' }, '', '/main')
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Call backend logout endpoint to blacklist token
+    try {
+      await logoutUser();
+    } catch (error) {
+      console.error('Logout API error:', error);
+      // Even if API call fails, proceed with frontend logout
+      removeToken();
+    }
+    
     setIsLoggedIn(false)
     setCurrentView('login')
+    setUserProfile(null)
     // Replace current history entry to prevent back navigation to main screen
     window.history.replaceState({ view: 'login' }, '', '/')
   }
@@ -135,10 +232,9 @@ function App() {
     window.history.pushState({ view: 'createCommunity' }, '', '/community/create')
   }
 
-  const handleProfileRegistration = (formData) => {
-    // Remove password fields from registration data before saving to userProfile
-    const { password, confirmPassword, ...profileData } = formData;
-    setUserProfile(profileData);
+  const handleProfileRegistration = (userData) => {
+    // userData comes from API response (already has user info without passwords)
+    setUserProfile(userData);
     setIsLoggedIn(true)
     setCurrentView('main')
     window.history.pushState({ view: 'main' }, '', '/main')
@@ -174,7 +270,56 @@ function App() {
     window.history.pushState({ view: 'otherUserProfile', username: user.username }, '', `/user/${user.username}`);
   };
 
+  const handleNavigateToHome = () => {
+    setCurrentView('main');
+    window.history.pushState({ view: 'main' }, '', '/main');
+    setSelectedCommunity(null);
+  };
+
+  const handleCommunityDeleted = (communityTitle) => {
+    // Show success message
+    setSuccessMessage(`Community "${communityTitle}" has been deleted successfully.`);
+    
+    // Clear success message after 5 seconds
+    setTimeout(() => {
+      setSuccessMessage(null);
+    }, 5000);
+    
+    // Navigate to home
+    setCurrentView('main');
+    setSelectedCommunity(null);
+    window.history.pushState({ view: 'main' }, '', '/main');
+  };
+
+  const handleCommunityUpdated = (updatedCommunity) => {
+    // Update the selected community with new values
+    setSelectedCommunity(updatedCommunity);
+    
+    // Show success message
+    setSuccessMessage(`Community "${updatedCommunity.title}" has been updated successfully.`);
+    
+    // Clear success message after 5 seconds
+    setTimeout(() => {
+      setSuccessMessage(null);
+    }, 5000);
+  };
+
   const renderCurrentView = () => {
+    // Show loading while checking session
+    if (isLoading) {
+      return (
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          height: '100vh',
+          fontSize: '1.1rem'
+        }}>
+          Loading...
+        </div>
+      );
+    }
+
     switch (currentView) {
       case 'login':
         return <Login onNavigateToRegister={handleNavigateToRegister} onLogin={handleLogin} />
@@ -187,9 +332,9 @@ function App() {
       case 'profile':
         return <Profile user={userProfile} onSaveProfile={handleSaveProfile} onDeleteAccount={handleLogout} />;
       case 'communityDetails':
-        return <CommunityDetails community={selectedCommunity} />
+        return <CommunityDetails community={selectedCommunity} currentUser={userProfile} onDeleteSuccess={handleCommunityDeleted} onCommunityUpdated={handleCommunityUpdated} />
       case 'createCommunity':
-        return <CreateCommunity />
+        return <CreateCommunity onCommunityCreated={handleOpenCommunity} />
       case 'allUsers':
         return <AllUsers onSelectUser={handleSelectUser} />
       case 'otherUserProfile':
@@ -206,7 +351,27 @@ function App() {
         onSelectProfile={handleSelectProfile}
         onSelectMyCommunities={handleSelectMyCommunities}
         onSelectAllUsers={handleSelectAllUsers}
+        onNavigateToHome={handleNavigateToHome}
       />
+      {successMessage && (
+        <div style={{
+          position: 'fixed',
+          top: '70px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1000,
+          backgroundColor: '#10b981',
+          color: 'white',
+          padding: '0.75rem 1.5rem',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+          maxWidth: '90%',
+          textAlign: 'center',
+          animation: 'slideDown 0.3s ease-out'
+        }}>
+          {successMessage}
+        </div>
+      )}
       {renderCurrentView()}
     </div>
   )

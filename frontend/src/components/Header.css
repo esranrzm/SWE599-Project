@@ -18,11 +18,40 @@
   justify-content: space-between;
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .header-title {
   margin: 0;
   font-size: 1.5rem;
   font-weight: 600;
   color: white;
+}
+
+.home-button {
+  background: #3498db;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background-color 0.2s ease;
+  font-weight: 500;
+}
+
+.home-button:hover {
+  background: #2980b9;
+}
+
+.home-button svg {
+  display: inline-flex;
 }
 
 .header-right {

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import './CommunityDetails.css';
+import { deleteCommunity, updateCommunity } from '../../services/api';
 
 const inputTypeOptions = [
   { value: 'freeText', label: 'Free text' },
@@ -92,7 +93,7 @@ const createId = () => {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const CommunityDetails = ({ community }) => {
+const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunityUpdated }) => {
   const [selectedInputType, setSelectedInputType] = useState('');
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [inputs, setInputs] = useState(() => {
@@ -114,17 +115,30 @@ const CommunityDetails = ({ community }) => {
   });
   const [formError, setFormError] = useState('');
   const [detailsItem, setDetailsItem] = useState(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState(null);
+  const [updateForm, setUpdateForm] = useState({
+    title: '',
+    description: ''
+  });
 
-  const title = community?.title || 'Children in Van need a new school building';
-  const description =
-    community?.description ||
-    'Children who lives Van Agarri need a new school building with new equipments. Their current building is very old and not secure for them. They also have hard time during winter because the current building does not have heater in classrooms. Most of them got sick during school terms and miss their classes. We need structural equipments, people who are familiar with constructional work, items that can be used in classrooms.';
-  const communityOwner = community?.creator || 'esranzm';
+  // Use community prop values directly - they will update when prop changes
+  const title = community?.title || 'Community Title';
+  const description = community?.description || 'No description provided.';
+  // Support both API format (creator_name) and mapped format (creator)
+  const communityOwner = community?.creator || community?.creator_name || 'Unknown';
+  // Support both API format (created_at) and mapped format (createdAt)
   const createdAt = formatDate(
-    community?.createdAt || '2025-10-21T09:00:00Z',
+    community?.createdAt || community?.created_at || new Date().toISOString(),
   );
-  const commentCount = community?.commentCount ?? 10;
-  const currentUser = community?.currentUser || 'currentUser';
+  const commentCount = community?.commentCount ?? 0;
+  
+  // Check if current user is the creator
+  const isCreator = currentUser && community && (currentUser.id === community.creator_id || currentUser.id === community.creatorId);
 
   const handleSort = (column) => {
     setSortConfig((prev) => {
@@ -364,6 +378,104 @@ const CommunityDetails = ({ community }) => {
     setIsFormVisible(true);
   };
 
+  const handleDeleteClick = () => {
+    setShowDeleteDialog(true);
+    setDeleteError(null);
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteDialog(false);
+    setDeleteError(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!community || !community.id) {
+      setDeleteError('Community information is missing.');
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await deleteCommunity(community.id);
+      
+      // Call the success callback which will handle navigation
+      if (onDeleteSuccess) {
+        onDeleteSuccess(community.title || 'Community');
+      }
+    } catch (error) {
+      setDeleteError(error.message || 'Failed to delete community. Please try again.');
+      setIsDeleting(false);
+    }
+  };
+
+  const handleUpdateClick = () => {
+    // Pre-fill form with existing values
+    setUpdateForm({
+      title: community?.title || '',
+      description: community?.description || ''
+    });
+    setShowUpdateDialog(true);
+    setUpdateError(null);
+  };
+
+  const handleCancelUpdate = () => {
+    setShowUpdateDialog(false);
+    setUpdateError(null);
+    setUpdateForm({ title: '', description: '' });
+  };
+
+  const handleConfirmUpdate = async () => {
+    // Validate fields
+    if (!updateForm.title.trim()) {
+      setUpdateError('Title cannot be empty.');
+      return;
+    }
+    if (!updateForm.description.trim()) {
+      setUpdateError('Description cannot be empty.');
+      return;
+    }
+
+    if (!community || !community.id) {
+      setUpdateError('Community information is missing.');
+      return;
+    }
+
+    setIsUpdating(true);
+    setUpdateError(null);
+
+    try {
+      const updatedCommunity = await updateCommunity(community.id, {
+        title: updateForm.title.trim(),
+        description: updateForm.description.trim()
+      });
+
+      // Map API response to match expected format
+      const mappedCommunity = {
+        id: updatedCommunity.id,
+        title: updatedCommunity.title,
+        description: updatedCommunity.description,
+        creator: updatedCommunity.creator_name,
+        creator_id: updatedCommunity.creator_id,
+        createdAt: updatedCommunity.created_at,
+        updatedAt: updatedCommunity.updated_at,
+      };
+
+      // Call the update callback to update the displayed values
+      if (onCommunityUpdated) {
+        onCommunityUpdated(mappedCommunity);
+      }
+
+      setShowUpdateDialog(false);
+      setUpdateForm({ title: '', description: '' });
+    } catch (error) {
+      setUpdateError(error.message || 'Failed to update community. Please try again.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   return (
     <div className="community-details">
       <div className="community-details-wrapper">
@@ -388,6 +500,34 @@ const CommunityDetails = ({ community }) => {
                 <dd>{commentCount}</dd>
               </div>
             </dl>
+            {isCreator && (
+              <>
+                <button
+                  className="update-community-button"
+                  onClick={handleUpdateClick}
+                  aria-label="Update community"
+                  title="Update this community"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                  Update Community
+                </button>
+                <button
+                  className="delete-community-button"
+                  onClick={handleDeleteClick}
+                  aria-label="Delete community"
+                  title="Delete this community"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  Delete Community
+                </button>
+              </>
+            )}
           </aside>
         </div>
 
@@ -547,6 +687,165 @@ const CommunityDetails = ({ community }) => {
                 onClick={() => setDetailsItem(null)}
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteDialog && (
+        <div
+          className="delete-dialog-backdrop"
+          role="presentation"
+          onClick={handleCancelDelete}
+        >
+          <div
+            className="delete-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="delete-dialog-header">
+              <h3 id="delete-dialog-title">Delete Community</h3>
+              <button
+                type="button"
+                className="dialog-close-button"
+                onClick={handleCancelDelete}
+                aria-label="Close"
+                disabled={isDeleting}
+              >
+                ×
+              </button>
+            </div>
+            <div className="delete-dialog-content">
+              <p>
+                Are you sure you want to delete the community <strong>"{title}"</strong>?
+              </p>
+              <p style={{ color: '#dc2626', marginTop: '0.5rem' }}>
+                This action cannot be undone.
+              </p>
+              {deleteError && (
+                <div className="delete-error-message" style={{
+                  marginTop: '1rem',
+                  padding: '0.75rem',
+                  backgroundColor: '#fee',
+                  color: '#c33',
+                  borderRadius: '4px',
+                  border: '1px solid #fcc'
+                }}>
+                  {deleteError}
+                </div>
+              )}
+            </div>
+            <div className="delete-dialog-footer">
+              <button
+                type="button"
+                className="dialog-cancel-button"
+                onClick={handleCancelDelete}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="dialog-delete-button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Community Dialog */}
+      {showUpdateDialog && (
+        <div
+          className="update-dialog-backdrop"
+          role="presentation"
+          onClick={handleCancelUpdate}
+        >
+          <div
+            className="update-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="update-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="update-dialog-header">
+              <h3 id="update-dialog-title">Update Community</h3>
+              <button
+                type="button"
+                className="dialog-close-button"
+                onClick={handleCancelUpdate}
+                aria-label="Close"
+                disabled={isUpdating}
+              >
+                ×
+              </button>
+            </div>
+            <div className="update-dialog-content">
+              <div className="update-form-group">
+                <label htmlFor="update-title" className="update-form-label">
+                  Title
+                </label>
+                <input
+                  id="update-title"
+                  type="text"
+                  className="update-form-input"
+                  value={updateForm.title}
+                  onChange={(e) => setUpdateForm({ ...updateForm, title: e.target.value })}
+                  placeholder="Community title"
+                  maxLength={200}
+                  disabled={isUpdating}
+                />
+                <div className="update-character-count">
+                  {updateForm.title.length} / 200
+                </div>
+              </div>
+              <div className="update-form-group">
+                <label htmlFor="update-description" className="update-form-label">
+                  Description
+                </label>
+                <textarea
+                  id="update-description"
+                  className="update-form-textarea"
+                  value={updateForm.description}
+                  onChange={(e) => setUpdateForm({ ...updateForm, description: e.target.value })}
+                  placeholder="Community description"
+                  maxLength={500}
+                  rows={6}
+                  disabled={isUpdating}
+                />
+                <div className="update-character-count">
+                  {updateForm.description.length} / 500
+                </div>
+              </div>
+              {updateError && (
+                <div className="update-error-message">
+                  {updateError}
+                </div>
+              )}
+            </div>
+            <div className="update-dialog-footer">
+              <button
+                type="button"
+                className="dialog-cancel-button"
+                onClick={handleCancelUpdate}
+                disabled={isUpdating}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="dialog-update-button"
+                onClick={handleConfirmUpdate}
+                disabled={isUpdating || !updateForm.title.trim() || !updateForm.description.trim()}
+              >
+                {isUpdating ? 'Updating...' : 'Update'}
               </button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './Login.css';
+import { loginUser, storeToken } from '../../services/api';
 
 const Login = ({ onNavigateToRegister, onLogin }) => {
   const [formData, setFormData] = useState({
@@ -8,6 +9,8 @@ const Login = ({ onNavigateToRegister, onLogin }) => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -39,14 +42,36 @@ const Login = ({ onNavigateToRegister, onLogin }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setApiError(''); // Clear previous errors
     
     if (validateForm()) {
-      // Handle login logic here
-      console.log('Login data:', formData);
-      alert('Login successful!');
-      onLogin(); // Call the login handler to navigate to main screen
+      setLoading(true);
+      
+      try {
+        const response = await loginUser(formData.username, formData.password);
+        
+        // Store the token
+        storeToken(response.access_token);
+        
+        // Store user data if needed
+        if (response.user) {
+          // Pass user data to parent component
+          onLogin(response.user);
+        } else {
+          onLogin();
+        }
+      } catch (error) {
+        // Handle API errors
+        setApiError(error.message || 'Invalid username or password');
+        setErrors({
+          ...errors,
+          api: error.message || 'Invalid username or password'
+        });
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -60,6 +85,19 @@ const Login = ({ onNavigateToRegister, onLogin }) => {
         <h2 className="login-title">Sign In</h2>
         
         <form onSubmit={handleSubmit} className="login-form">
+          {apiError && (
+            <div className="error-message" style={{ 
+              marginBottom: '1rem', 
+              padding: '0.75rem', 
+              backgroundColor: '#fee', 
+              border: '1px solid #fcc',
+              borderRadius: '4px',
+              color: '#c33'
+            }}>
+              {apiError}
+            </div>
+          )}
+          
           <div className="form-group">
             <label htmlFor="username" className="form-label">Username</label>
             <input
@@ -113,8 +151,8 @@ const Login = ({ onNavigateToRegister, onLogin }) => {
             {errors.password && <span className="error-message">{errors.password}</span>}
           </div>
 
-          <button type="submit" className="login-button">
-            Log In
+          <button type="submit" className="login-button" disabled={loading}>
+            {loading ? 'Logging in...' : 'Log In'}
           </button>
         </form>
 
