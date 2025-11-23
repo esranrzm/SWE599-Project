@@ -20,21 +20,6 @@ router = APIRouter()
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserRegistration, db: Session = Depends(get_db)):
-    """
-    Register a new user.
-    
-    - **email**: User's email address (must be unique)
-    - **username**: User's username (must be unique)
-    - **name**: User's first name
-    - **surname**: User's last name
-    - **password**: User's password (will be hashed)
-    - **profession**: User's profession
-    - **date_of_birth**: User's date of birth
-    - **photo**: Optional photo URL
-    - **consent**: User consent agreement
-    
-    Returns JWT token and user information on successful registration.
-    """
     try:
         # Check if username already exists
         existing_user = db.query(User).filter(User.username == user_data.username).first()
@@ -115,14 +100,6 @@ async def register(user_data: UserRegistration, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 async def login(credentials: UserLogin, db: Session = Depends(get_db)):
-    """
-    Authenticate a user and return a JWT token.
-    
-    - **username**: User's username
-    - **password**: User's password
-    
-    Returns JWT token and user information on successful authentication.
-    """
     try:
         # Find user by username
         user = db.query(User).filter(User.username == credentials.username).first()
@@ -162,32 +139,11 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse, status_code=status.HTTP_200_OK)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
-    """
-    Get the current authenticated user's information.
-    
-    This endpoint requires authentication - the user must provide a valid JWT token
-    in the Authorization header.
-    
-    Headers:
-        Authorization: Bearer <token>
-    
-    Returns:
-        Current user's information
-    """
     return UserResponse.model_validate(current_user)
 
 
 @router.get("/verify-token", status_code=status.HTTP_200_OK)
 async def verify_token(current_user: User = Depends(get_current_user)):
-    """
-    Verify if the provided JWT token is valid.
-    
-    Headers:
-        Authorization: Bearer <token>
-    
-    Returns:
-        Status indicating token is valid and user information
-    """
     return {
         "valid": True,
         "message": "Token is valid",
@@ -204,18 +160,6 @@ async def logout(
     credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
     db: Session = Depends(get_db)
 ):
-    """
-    Logout the current user by blacklisting their token.
-    
-    This endpoint requires authentication - the user must provide a valid JWT token.
-    Once logged out, the token cannot be used again until it expires.
-    
-    Headers:
-        Authorization: Bearer <token>
-    
-    Returns:
-        Success message indicating logout was successful
-    """
     token = credentials.credentials
     
     # Decode token to get expiration time
