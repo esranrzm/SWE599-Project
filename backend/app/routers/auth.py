@@ -6,7 +6,7 @@ import traceback
 
 from app.database import get_db
 from app.models import User, BlacklistedToken
-from app.schemas import UserRegistration, UserLogin, TokenResponse, UserResponse, ErrorResponse
+from app.schemas import UserRegistration, UserLogin, TokenResponse, UserResponse, ErrorResponse, UserUpdate, PasswordUpdate
 from app.utils import verify_password, hash_password, create_access_token, decode_access_token
 from app.dependencies import get_current_user
 from datetime import datetime
@@ -59,7 +59,7 @@ async def register(user_data: UserRegistration, db: Session = Depends(get_db)):
             hashed_password=hashed_password,
             profession=user_data.profession,
             date_of_birth=user_data.dateOfBirth,  # Map from camelCase to snake_case
-            photo_url=user_data.photo,
+            photo_url=None,  # Profile picture feature removed - always use default avatar
             consent=user_data.consent
         )
         
@@ -198,4 +198,187 @@ async def logout(
         "message": "Successfully logged out",
         "logged_out": True
     }
+
+
+@router.put("/me", response_model=UserResponse, status_code=status.HTTP_200_OK)
+async def update_user_profile(
+    user_data: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update the current authenticated user's profile.
+    
+    Requires authentication - the user can only update their own profile.
+    
+    - **email**: Updated email address (must be unique)
+    - **username**: Updated username (must be unique)
+    - **name**: Updated first name
+    - **surname**: Updated last name
+    - **profession**: Updated profession
+    - **photo_url**: Optional photo URL
+    
+    Returns the updated user information.
+    """
+    try:
+        # Check if username is being changed and if new username already exists
+        if user_data.username != current_user.username:
+            existing_username = db.query(User).filter(
+                User.username == user_data.username,
+                User.id != current_user.id
+            ).first()
+            if existing_username:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Username already taken",
+                )
+        
+        # Check if email is being changed and if new email already exists
+        if user_data.email != current_user.email:
+            existing_email = db.query(User).filter(
+                User.email == user_data.email,
+                User.id != current_user.id
+            ).first()
+            if existing_email:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email already registered",
+                )
+        
+        # Update user fields
+        current_user.username = user_data.username
+        current_user.email = user_data.email
+        current_user.name = user_data.name
+        current_user.surname = user_data.surname
+        current_user.profession = user_data.profession
+        # Profile picture feature removed - always set to None
+        current_user.photo_url = None
+        
+        db.commit()
+        db.refresh(current_user)
+        
+        logger.info(f"User profile updated: {current_user.id}")
+        
+        return UserResponse.model_validate(current_user)
+        
+    except HTTPException:
+        raise
+    except IntegrityError as e:
+        db.rollback()
+        logger.error(f"IntegrityError during profile update: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User with this username or email already exists",
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating user profile: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while updating the profile: {str(e)}",
+        )
+
+
+@router.put("/me/password", status_code=status.HTTP_200_OK)
+async def update_user_password(
+    password_data: PasswordUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update the current authenticated user's password.
+    
+    Requires authentication - the user can only update their own password.
+    
+    - **current_password**: Current password for verification
+    - **new_password**: New password (min 6 characters)
+    
+    After successful password update, the user should logout and login again with the new password.
+    """
+    try:
+        # Verify current password
+        if not verify_password(password_data.current_password, current_user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Current password is incorrect",
+            )
+        
+        # Check if new password is the same as current password
+        if verify_password(password_data.new_password, current_user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password must be different from current password",
+            )
+        
+        # Hash the new password
+        try:
+            hashed_password = hash_password(password_data.new_password)
+        except Exception as hash_error:
+            logger.error(f"Password hashing failed: {hash_error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Password hashing failed: {str(hash_error)}",
+            )
+        
+        # Update password
+        current_user.hashed_password = hashed_password
+        
+        db.commit()
+        db.refresh(current_user)
+        
+        logger.info(f"Password updated for user: {current_user.id}")
+        
+        return {
+            "message": "Password updated successfully. Please login again with your new password.",
+            "user_id": current_user.id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating password: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while updating the password: {str(e)}",
+        )
+
+
+@router.delete("/me", status_code=status.HTTP_200_OK)
+async def delete_user_account(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete the current authenticated user's account.
+    
+    Requires authentication - the user can only delete their own account.
+    
+    This will permanently delete the user account and all associated data.
+    The user will need to logout after deletion.
+    
+    Returns a success message.
+    """
+    try:
+        user_id = current_user.id
+        username = current_user.username
+        
+        # Delete the user (this will cascade delete related data if foreign keys are set up)
+        db.delete(current_user)
+        db.commit()
+        
+        logger.info(f"User account deleted: {user_id} (username: {username})")
+        
+        return {
+            "message": "User account deleted successfully",
+            "user_id": user_id
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting user account: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while deleting the account: {str(e)}",
+        )
 

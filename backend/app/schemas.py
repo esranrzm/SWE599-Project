@@ -34,6 +34,20 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class UserUpdate(BaseModel):
+    email: EmailStr
+    name: str = Field(..., min_length=1, max_length=100)
+    surname: str = Field(..., min_length=1, max_length=100)
+    username: str = Field(..., min_length=1, max_length=50)
+    profession: str = Field(..., min_length=1, max_length=100)
+    photo_url: Optional[str] = None
+
+
+class PasswordUpdate(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6)
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str

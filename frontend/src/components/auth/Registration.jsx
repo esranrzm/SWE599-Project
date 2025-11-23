@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import './Registration.css';
-import avatarDefault from '../../assets/avatar-default.svg';
 import { registerUser, storeToken } from '../../services/api';
 
 const Registration = ({ onNavigateToLogin, onRegister }) => {
@@ -13,9 +12,7 @@ const Registration = ({ onNavigateToLogin, onRegister }) => {
     confirmPassword: '',
     profession: '',
     dateOfBirth: '',
-    consent: false,
-    photo: null, // new field for photo
-    photoPreview: null // for preview UI only
+    consent: false
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -24,20 +21,7 @@ const Registration = ({ onNavigateToLogin, onRegister }) => {
   const [apiError, setApiError] = useState('');
 
   const handleInputChange = (e) => {
-    const { name, value, type, checked, files } = e.target;
-    if (name === 'photo' && files[0]) {
-      const file = files[0];
-      setFormData(prev => ({
-        ...prev,
-        photo: file
-      }));
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, photoPreview: reader.result }));
-      };
-      reader.readAsDataURL(file);
-      return;
-    }
+    const { name, value, type, checked } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
@@ -113,16 +97,11 @@ const Registration = ({ onNavigateToLogin, onRegister }) => {
       setLoading(true);
       
       try {
-        // Remove preview property before submit
-        const { photoPreview, confirmPassword, ...registrationData } = formData;
+        // Remove confirmPassword before submit (it's only for validation)
+        const { confirmPassword, ...registrationData } = formData;
         
-        // Handle photo - for now we'll send null, can be enhanced later for file upload
-        const dataToSend = {
-          ...registrationData,
-          photo: null // TODO: Handle file upload separately
-        };
-        
-        const response = await registerUser(dataToSend);
+        // Send registration data (photo is removed - using default avatar instead)
+        const response = await registerUser(registrationData);
         
         // Store the token
         storeToken(response.access_token);
@@ -177,22 +156,6 @@ const Registration = ({ onNavigateToLogin, onRegister }) => {
             </div>
           )}
           
-          {/* Profile photo */}
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label" htmlFor="photo">Profile Photo (optional)</label>
-              <input type="file" id="photo" name="photo" accept="image/*" onChange={handleInputChange} />
-              <div className="profile-preview">
-                <img
-                  src={formData.photoPreview || avatarDefault}
-                  alt="Profile Preview"
-                  className="profile-preview-img"
-                  style={{width:'64px',height:'64px',borderRadius:'50%',objectFit:'cover',background:'#e5e7eb'}}
-                />
-              </div>
-            </div>
-          </div>
-
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="email" className="form-label">Email</label>
