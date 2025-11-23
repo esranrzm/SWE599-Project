@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Date, Boolean, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -32,5 +32,20 @@ class BlacklistedToken(Base):
 
     def __repr__(self):
         return f"<BlacklistedToken(token='{self.token[:20]}...', expires_at='{self.expires_at}')>"
+
+
+class Community(Base):
+    __tablename__ = "communities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False, index=True)
+    description = Column(String(500), nullable=False)
+    creator_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    creator_name = Column(String(200), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<Community(id={self.id}, title='{self.title}', creator_id={self.creator_id})>"
 
 

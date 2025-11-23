@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import './CreateCommunity.css';
+import { createCommunity } from '../../services/api';
 
-const CreateCommunity = () => {
+const CreateCommunity = ({ onCommunityCreated }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [communityInputs, setCommunityInputs] = useState([]);
@@ -194,20 +195,63 @@ const CreateCommunity = () => {
     return editingInputId ? 'Update Input' : 'Add Input';
   };
 
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+
   const isCreateDisabled = () => {
-    return !title.trim() || !description.trim() || communityInputs.length === 0;
+    return !title.trim() || !description.trim() || isCreating;
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (isCreateDisabled()) {
       return;
     }
-    // TODO: Implement API call to create community
-    console.log('Creating community:', {
-      title,
-      description,
-      inputs: communityInputs
-    });
+
+    setError(null);
+    setSuccess(null);
+    setIsCreating(true);
+
+    try {
+      const communityData = {
+        title: title.trim(),
+        description: description.trim()
+      };
+
+      const response = await createCommunity(communityData);
+      
+      setSuccess(`Community "${response.title}" created successfully!`);
+      
+      // Map API response to match expected format
+      const mappedCommunity = {
+        id: response.id,
+        title: response.title,
+        description: response.description,
+        creator: response.creator_name,
+        creator_id: response.creator_id,
+        createdAt: response.created_at,
+        updatedAt: response.updated_at,
+      };
+      
+      // Reset form
+      setTitle('');
+      setDescription('');
+      setCommunityInputs([]);
+      
+      // Navigate to community details after a short delay to show success message
+      setTimeout(() => {
+        if (onCommunityCreated) {
+          onCommunityCreated(mappedCommunity);
+        }
+      }, 1000);
+      
+      console.log('Community created:', response);
+    } catch (err) {
+      setError(err.message || 'Failed to create community. Please try again.');
+      console.error('Error creating community:', err);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const showInputValueField = () => {
@@ -494,6 +538,32 @@ const CreateCommunity = () => {
           </div>
         </div>
 
+        {/* Error/Success Messages */}
+        {error && (
+          <div className="create-community-message error-message" style={{
+            padding: '12px',
+            marginBottom: '20px',
+            backgroundColor: '#fee',
+            color: '#c33',
+            borderRadius: '4px',
+            border: '1px solid #fcc'
+          }}>
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="create-community-message success-message" style={{
+            padding: '12px',
+            marginBottom: '20px',
+            backgroundColor: '#efe',
+            color: '#3c3',
+            borderRadius: '4px',
+            border: '1px solid #cfc'
+          }}>
+            {success}
+          </div>
+        )}
+
         {/* Create Button */}
         <div className="create-button-container">
           <button
@@ -501,7 +571,7 @@ const CreateCommunity = () => {
             onClick={handleCreate}
             disabled={isCreateDisabled()}
           >
-            Create
+            {isCreating ? 'Creating...' : 'Create'}
           </button>
         </div>
       </div>

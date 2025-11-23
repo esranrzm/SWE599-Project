@@ -10,7 +10,7 @@ import MyCommunities from './components/community/MyCommunities';
 import AllUsers from './components/AllUsers';
 import OtherUserProfile from './components/OtherUserProfile';
 import avatarDefault from './assets/avatar-default.svg';
-import { logoutUser, removeToken, checkSession, getToken } from './services/api';
+import { logoutUser, removeToken, checkSession, getToken, getCommunityById } from './services/api';
 import './App.css'
 
 function App() {
@@ -20,6 +20,7 @@ function App() {
   const [selectedCommunity, setSelectedCommunity] = useState(null)
   const [userProfile, setUserProfile] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   // Check for existing session on app load
   useEffect(() => {
@@ -101,12 +102,35 @@ function App() {
         setCurrentView('createCommunity')
         return
       }
-      if (path.startsWith('/community/')) {
+      if (path.startsWith('/community/') && !path.startsWith('/community/create')) {
         const idStr = path.replace('/community/', '')
         const id = parseInt(idStr, 10)
-        // If reloading details, we do not have the data; keep placeholder
-        setSelectedCommunity((prev) => prev && prev.id === id ? prev : { id, title: `Community ${id}`, description: 'No description provided.' })
+        // Set view first, then fetch data
         setCurrentView('communityDetails')
+        // Try to fetch community data if we don't have it or it's a different ID
+        if (!selectedCommunity || selectedCommunity.id !== id) {
+          // Fetch community from API
+          const fetchCommunity = async () => {
+            try {
+              const community = await getCommunityById(id);
+              const mappedCommunity = {
+                id: community.id,
+                title: community.title,
+                description: community.description,
+                creator: community.creator_name,
+                creator_id: community.creator_id,
+                createdAt: community.created_at,
+                updatedAt: community.updated_at,
+              };
+              setSelectedCommunity(mappedCommunity);
+            } catch (err) {
+              console.error('Error fetching community:', err);
+              // Fallback to placeholder
+              setSelectedCommunity({ id, title: `Community ${id}`, description: 'No description provided.' });
+            }
+          };
+          fetchCommunity();
+        }
         return
       }
       if (path.startsWith('/register')) {
@@ -246,6 +270,40 @@ function App() {
     window.history.pushState({ view: 'otherUserProfile', username: user.username }, '', `/user/${user.username}`);
   };
 
+  const handleNavigateToHome = () => {
+    setCurrentView('main');
+    window.history.pushState({ view: 'main' }, '', '/main');
+    setSelectedCommunity(null);
+  };
+
+  const handleCommunityDeleted = (communityTitle) => {
+    // Show success message
+    setSuccessMessage(`Community "${communityTitle}" has been deleted successfully.`);
+    
+    // Clear success message after 5 seconds
+    setTimeout(() => {
+      setSuccessMessage(null);
+    }, 5000);
+    
+    // Navigate to home
+    setCurrentView('main');
+    setSelectedCommunity(null);
+    window.history.pushState({ view: 'main' }, '', '/main');
+  };
+
+  const handleCommunityUpdated = (updatedCommunity) => {
+    // Update the selected community with new values
+    setSelectedCommunity(updatedCommunity);
+    
+    // Show success message
+    setSuccessMessage(`Community "${updatedCommunity.title}" has been updated successfully.`);
+    
+    // Clear success message after 5 seconds
+    setTimeout(() => {
+      setSuccessMessage(null);
+    }, 5000);
+  };
+
   const renderCurrentView = () => {
     // Show loading while checking session
     if (isLoading) {
@@ -274,9 +332,9 @@ function App() {
       case 'profile':
         return <Profile user={userProfile} onSaveProfile={handleSaveProfile} onDeleteAccount={handleLogout} />;
       case 'communityDetails':
-        return <CommunityDetails community={selectedCommunity} />
+        return <CommunityDetails community={selectedCommunity} currentUser={userProfile} onDeleteSuccess={handleCommunityDeleted} onCommunityUpdated={handleCommunityUpdated} />
       case 'createCommunity':
-        return <CreateCommunity />
+        return <CreateCommunity onCommunityCreated={handleOpenCommunity} />
       case 'allUsers':
         return <AllUsers onSelectUser={handleSelectUser} />
       case 'otherUserProfile':
@@ -293,7 +351,27 @@ function App() {
         onSelectProfile={handleSelectProfile}
         onSelectMyCommunities={handleSelectMyCommunities}
         onSelectAllUsers={handleSelectAllUsers}
+        onNavigateToHome={handleNavigateToHome}
       />
+      {successMessage && (
+        <div style={{
+          position: 'fixed',
+          top: '70px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1000,
+          backgroundColor: '#10b981',
+          color: 'white',
+          padding: '0.75rem 1.5rem',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+          maxWidth: '90%',
+          textAlign: 'center',
+          animation: 'slideDown 0.3s ease-out'
+        }}>
+          {successMessage}
+        </div>
+      )}
       {renderCurrentView()}
     </div>
   )

@@ -1,121 +1,66 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import './MyCommunities.css';
+import { getAllCommunities, getMyCommunities } from '../../services/api';
 
 const MyCommunities = ({ onOpenCommunity }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSection, setActiveSection] = useState('all'); // 'created', 'contributed', 'all'
+  const [allCommunities, setAllCommunities] = useState([]);
+  const [myCommunities, setMyCommunities] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Mock data - in a real app, this would come from API/state
-  const allCards = useMemo(() => {
-    const created = [
-      {
-        id: 'created-1',
-        title: 'Neighborhood Solar Coalition',
-        description:
-          'Started weekend workshops with rooftop installers in Çankaya and helped 14 apartment boards evaluate net-metering proposals using shared spreadsheets.',
-        type: 'created',
-      },
-      {
-        id: 'created-2',
-        title: 'Ankara Open Library Network',
-        description:
-          'Maintains curbside book exchange cabinets, scheduling volunteers for weekly restocks and read-aloud afternoons for children.',
-        type: 'created',
-      },
-      {
-        id: 'created-3',
-        title: 'Urban Farming Lab',
-        description:
-          'Converted an unused parking lot near Kolej metro into raised-bed gardens and coordinates drip-irrigation training with Hacettepe horticulture students.',
-        type: 'created',
-      },
-      {
-        id: 'created-4',
-        title: 'Tech for Accessibility Meetup',
-        description:
-          'Brings developers and disability advocates together, prototyping a voice-guided museum tour showcased at CerModern in March 2025.',
-        type: 'created',
-      },
-      {
-        id: 'created-5',
-        title: 'Community Disaster Response Playbook',
-        description:
-          'Documented shelter logistics based on February 2023 earthquake deployments and distributes updated checklists to neighborhood leaders each quarter.',
-        type: 'created',
-      },
-    ];
+  // Fetch communities based on active section
+  useEffect(() => {
+    const fetchCommunities = async () => {
+      setIsLoading(true);
+      setError(null);
 
-    const contributed = [
-      {
-        id: 'contributed-1',
-        title: 'Kadıköy Cycling Coalition',
-        description:
-          'Assisted with data collection for Sunday open-street pilots and authored blog posts analyzing the impact on local shops.',
-        type: 'contributed',
-      },
-      {
-        id: 'contributed-2',
-        title: 'İzmir Food Rescue Alliance',
-        description:
-          'Volunteered in midnight surplus pickups and built Airtable automations linking markets with shelters before Bayram.',
-        type: 'contributed',
-      },
-      {
-        id: 'contributed-3',
-        title: 'STEM Sisters Mentorship',
-        description:
-          'Coached a high school robotics team preparing for Teknofest and helped secure sponsorship from a local manufacturing cooperative.',
-        type: 'contributed',
-      },
-      {
-        id: 'contributed-4',
-        title: 'Anatolian Storytelling Festival',
-        description:
-          'Co-produced the digital program with live-captioning and curated community storytellers from Kars to Antalya.',
-        type: 'contributed',
-      },
-      {
-        id: 'contributed-5',
-        title: 'Zero Waste Dorms Initiative',
-        description:
-          'Ran compost workshops and monitored waste-sorting compliance using QR code check-ins across campus dormitories.',
-        type: 'contributed',
-      },
-      {
-        id: 'contributed-6',
-        title: 'Ankara Civic Tech Commons',
-        description:
-          'Contributed map layers for accessible transit stations and moderated monthly lightning talk sessions.',
-        type: 'contributed',
-      },
-      {
-        id: 'contributed-7',
-        title: 'Eastern Black Sea Trail Alliance',
-        description:
-          'Helped mark trailheads and produced bilingual safety briefings distributed to hikers last summer.',
-        type: 'contributed',
-      },
-      {
-        id: 'contributed-8',
-        title: 'Makers without Borders Turkey Chapter',
-        description:
-          'Fabricated open-source medical device parts during 2024 supply shortages, coordinating shipments with field clinics.',
-        type: 'contributed',
-      },
-    ];
+      try {
+        // Fetch all communities and my communities data
+        // Note: Contributed section will be empty for now (will be connected to community inputs later)
+        const [allData, myData] = await Promise.all([
+          getAllCommunities(),
+          getMyCommunities()
+        ]);
 
-    return { created, contributed };
-  }, []);
+        // Map API responses to expected format
+        const mapCommunity = (community) => ({
+          id: community.id,
+          title: community.title,
+          description: community.description,
+          creator: community.creator_name,
+          creator_id: community.creator_id,
+          createdAt: community.created_at,
+          updatedAt: community.updated_at,
+        });
+
+        setAllCommunities(allData.map(mapCommunity));
+        setMyCommunities(myData.map(mapCommunity));
+        // Contributed section left empty for now - will be connected to community inputs later
+      } catch (err) {
+        console.error('Error fetching communities:', err);
+        setError(err.message || 'Failed to load communities. Please try again.');
+        setAllCommunities([]);
+        setMyCommunities([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCommunities();
+  }, []); // Fetch once on mount
 
   const filteredCards = useMemo(() => {
     let cardsToShow = [];
     
     if (activeSection === 'created') {
-      cardsToShow = allCards.created;
+      cardsToShow = myCommunities;
     } else if (activeSection === 'contributed') {
-      cardsToShow = allCards.contributed;
+      // Contributed section is empty for now - will be connected to community inputs later
+      cardsToShow = [];
     } else {
-      cardsToShow = [...allCards.created, ...allCards.contributed];
+      cardsToShow = allCommunities;
     }
 
     if (!searchQuery.trim()) {
@@ -127,7 +72,7 @@ const MyCommunities = ({ onOpenCommunity }) => {
       card.title.toLowerCase().includes(query) ||
       card.description.toLowerCase().includes(query)
     );
-  }, [activeSection, searchQuery, allCards]);
+  }, [activeSection, searchQuery, allCommunities, myCommunities]);
 
   const truncate = (text, max) => (text.length > max ? text.slice(0, max) + '…' : text);
 
@@ -180,29 +125,57 @@ const MyCommunities = ({ onOpenCommunity }) => {
           </div>
         </div>
 
-        <div className="communities-cards">
-          {filteredCards.length > 0 ? (
-            filteredCards.map(card => (
-              <button
-                key={card.id}
-                type="button"
-                className="community-card card-button"
-                onClick={() => {
-                  console.log(card.title);
-                  onOpenCommunity && onOpenCommunity(card);
-                }}
-                aria-label={`Open ${card.title}`}
-              >
-                <h3>{card.title}</h3>
-                <p>{truncate(card.description, 200)}</p>
-              </button>
-            ))
-          ) : (
-            <div className="no-results">
-              <p>No communities found matching your search.</p>
-            </div>
-          )}
-        </div>
+        {error && (
+          <div className="error-message" style={{
+            padding: '12px',
+            marginBottom: '20px',
+            backgroundColor: '#fee',
+            color: '#c33',
+            borderRadius: '4px',
+            border: '1px solid #fcc'
+          }}>
+            {error}
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="loading-message" style={{
+            padding: '40px',
+            textAlign: 'center',
+            fontSize: '1.1rem',
+            color: '#666'
+          }}>
+            Loading communities...
+          </div>
+        ) : (
+          <div className="communities-cards">
+            {filteredCards.length > 0 ? (
+              filteredCards.map(card => (
+                <button
+                  key={card.id}
+                  type="button"
+                  className="community-card card-button"
+                  onClick={() => {
+                    console.log(card.title);
+                    onOpenCommunity && onOpenCommunity(card);
+                  }}
+                  aria-label={`Open ${card.title}`}
+                >
+                  <h3>{card.title}</h3>
+                  <p>{truncate(card.description, 200)}</p>
+                </button>
+              ))
+            ) : (
+              <div className="no-results">
+                <p>
+                  {activeSection === 'contributed' 
+                    ? 'Contributed section will be available once community inputs are implemented.' 
+                    : `No communities found${searchQuery.trim() ? ' matching your search' : activeSection === 'created' ? ' created by you' : ''}.`}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
