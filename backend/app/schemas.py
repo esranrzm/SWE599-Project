@@ -43,3 +43,26 @@ class ErrorResponse(BaseModel):
     detail: str
     error_code: Optional[str] = None
 
+
+class CommunityCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(..., min_length=1, max_length=500)
+
+
+class CommunityUpdate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(..., min_length=1, max_length=500)
+
+
+class CommunityResponse(BaseModel):
+    id: int
+    title: str
+    description: str
+    creator_id: int
+    creator_name: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
