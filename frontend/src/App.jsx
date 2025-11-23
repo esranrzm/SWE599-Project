@@ -257,6 +257,38 @@ function App() {
 
   const handleSaveProfile = (updated) => {
     setUserProfile(updated);
+    // Show success message
+    setSuccessMessage('Profile updated successfully!');
+    setTimeout(() => {
+      setSuccessMessage(null);
+    }, 5000);
+  };
+
+  const handleDeleteAccount = async () => {
+    // This will be called after successful deletion in Profile component
+    // Clear token and logout
+    removeToken();
+    setIsLoggedIn(false);
+    setCurrentView('login');
+    setUserProfile(null);
+    window.history.replaceState({ view: 'login' }, '', '/');
+  };
+
+  const handlePasswordUpdated = () => {
+    // Show success message
+    setSuccessMessage('Password updated successfully! Please login again with your new password.');
+    
+    // Clear success message after 5 seconds
+    setTimeout(() => {
+      setSuccessMessage(null);
+    }, 5000);
+    
+    // Logout user for security (they must login again with new password)
+    removeToken();
+    setIsLoggedIn(false);
+    setCurrentView('login');
+    setUserProfile(null);
+    window.history.replaceState({ view: 'login' }, '', '/');
   };
 
   const handleSelectAllUsers = () => {
@@ -330,7 +362,7 @@ function App() {
       case 'myCommunities':
         return <MyCommunities onOpenCommunity={handleOpenCommunity} />
       case 'profile':
-        return <Profile user={userProfile} onSaveProfile={handleSaveProfile} onDeleteAccount={handleLogout} />;
+        return <Profile user={userProfile} onSaveProfile={handleSaveProfile} onDeleteAccount={handleDeleteAccount} onPasswordUpdated={handlePasswordUpdated} />;
       case 'communityDetails':
         return <CommunityDetails community={selectedCommunity} currentUser={userProfile} onDeleteSuccess={handleCommunityDeleted} onCommunityUpdated={handleCommunityUpdated} />
       case 'createCommunity':

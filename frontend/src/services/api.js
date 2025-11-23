@@ -20,8 +20,8 @@ export const registerUser = async (userData) => {
       password: userData.password,
       profession: userData.profession,
       dateOfBirth: userData.dateOfBirth, // Frontend uses camelCase
-      consent: userData.consent,
-      photo: userData.photo ? userData.photo : null
+      consent: userData.consent
+      // photo field removed - using default avatar instead
     };
 
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
@@ -186,6 +186,138 @@ export const checkSession = async () => {
     console.log('Session check failed:', error.message);
     removeToken();
     return null;
+  }
+};
+
+/**
+ * Update the current user's profile
+ * @param {Object} userData - Updated user data (email, name, surname, username, profession, photo_url)
+ * @returns {Promise<Object>} Updated user data
+ */
+export const updateUser = async (userData) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/auth/me`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        email: userData.email,
+        name: userData.name,
+        surname: userData.surname,
+        username: userData.username,
+        profession: userData.profession,
+        photo_url: null // Profile picture feature removed - always use default avatar
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to update profile');
+    }
+
+    // Map backend response to frontend format
+    let dateOfBirth = null;
+    if (data.date_of_birth) {
+      dateOfBirth = String(data.date_of_birth).split('T')[0];
+    }
+
+    return {
+      id: data.id,
+      username: data.username,
+      email: data.email,
+      name: data.name,
+      surname: data.surname,
+      profession: data.profession,
+      dateOfBirth: dateOfBirth,
+      photoUrl: data.photo_url,
+      photo: data.photo_url,
+      photo_url: data.photo_url,
+      createdAt: data.created_at
+    };
+  } catch (error) {
+    console.error('Update user error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update the current user's password
+ * @param {string} currentPassword - Current password
+ * @param {string} newPassword - New password
+ * @returns {Promise<Object>} Success message
+ */
+export const updatePassword = async (currentPassword, newPassword) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/auth/me/password`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to update password');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Update password error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete the current user's account
+ * @returns {Promise<Object>} Success message
+ */
+export const deleteUser = async () => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/auth/me`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to delete account');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Delete user error:', error);
+    throw error;
   }
 };
 

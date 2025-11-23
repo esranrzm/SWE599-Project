@@ -13,8 +13,6 @@ const AllUsers = ({ onSelectUser }) => {
       name: `User ${i + 1}`,
       surname: `Surname ${i + 1}`,
       email: `user${i + 1}@example.com`,
-      photo: null, // Will use default avatar
-      photoPreview: '',
       profession: `Profession ${i + 1}`,
       dateOfBirth: '2000-01-01',
     }));
@@ -70,7 +68,7 @@ const AllUsers = ({ onSelectUser }) => {
               >
                 <div className="user-card-photo">
                   <img 
-                    src={user.photoPreview || user.photo || avatarDefault} 
+                    src={avatarDefault} 
                     alt={`${user.name} ${user.surname}`}
                     className="user-photo"
                   />
