@@ -7,11 +7,10 @@ const OtherUserProfile = ({ user, onOpenCommunity }) => {
 
   if (!user) return <div className="other-user-profile-page"><div className="profile-card">No user found.</div></div>;
   
-  const { photo, photoPreview, email, name, surname, username, profession, dateOfBirth } = user;
+  const { email, name, surname, username, profession, dateOfBirth } = user;
 
-  let displayPhoto = photoPreview;
-  if (!displayPhoto && typeof photo === 'string' && photo.startsWith('data:')) displayPhoto = photo;
-  if (!displayPhoto) displayPhoto = avatarDefault;
+  // Always use default avatar icon
+  const displayPhoto = avatarDefault;
 
   // Mock user's communities data
   const userCommunities = useMemo(() => {

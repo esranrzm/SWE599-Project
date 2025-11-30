@@ -1,22 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import avatarDefault from '../../assets/avatar-default.svg';
-import { getCurrentUser, getToken } from '../../services/api';
+import { getCurrentUser, getToken, updateUser, deleteUser, updatePassword } from '../../services/api';
 import './Profile.css';
 
-const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteAccount, onChangePhoto, onSaveProfile }) => {
+const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteAccount, onSaveProfile, onPasswordUpdated }) => {
   const [user, setUser] = useState(initialUser);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editData, setEditData] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState('');
 
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [pwdData, setPwdData] = useState({ current: '', next: '', confirm: '' });
   const [showPwd, setShowPwd] = useState({ current: false, next: false, confirm: false });
   const [pwdError, setPwdError] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [updateError, setUpdateError] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
 
   // Fetch user data from API on component mount
   useEffect(() => {
@@ -84,16 +88,14 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
     );
   }
 
-  const { photo, photoUrl, photoPreview: initialPhotoPreview, email, name, surname, username, profession, dateOfBirth } = user;
+  const { email, name, surname, username, profession, dateOfBirth } = user;
 
   // Debug: Log the user object to see what we have
   console.log('Profile component - user object:', user);
   console.log('Profile component - dateOfBirth value:', dateOfBirth, 'type:', typeof dateOfBirth);
 
-  // Handle photo display - prioritize photoUrl from API, then photoPreview, then default
-  let displayPhoto = photoUrl || initialPhotoPreview || photoPreview;
-  if (!displayPhoto && typeof photo === 'string' && photo.startsWith('data:')) displayPhoto = photo;
-  if (!displayPhoto) displayPhoto = avatarDefault;
+  // Always use default avatar icon
+  const displayPhoto = avatarDefault;
 
   // Format date of birth for display
   const formatDateOfBirth = (dateStr) => {
@@ -137,39 +139,78 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
 
   const handleEditOpen = () => {
     setEditData({
-      email,
-      username,
-      profession,
-      photo: photo || null,
-      photoPreview: initialPhotoPreview || '',
+      email: email || '',
+      name: name || '',
+      surname: surname || '',
+      username: username || '',
+      profession: profession || '',
     });
-    setPhotoPreview(initialPhotoPreview || '');
+    setUpdateError(null);
     setEditOpen(true);
   };
 
   const handleEditChange = (e) => {
-    const { name, value, files } = e.target;
-    if (name === 'photo' && files && files[0]) {
-      const file = files[0];
-      setEditData((prev) => ({ ...prev, photo: file }));
-      const reader = new FileReader();
-      reader.onloadend = () => setPhotoPreview(reader.result);
-      reader.readAsDataURL(file);
-      return;
-    }
+    const { name, value } = e.target;
     setEditData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleEditCancel = () => setEditOpen(false);
-
-  const handleEditSave = (e) => {
-    e.preventDefault();
-    onSaveProfile && onSaveProfile({
-      ...user,
-      ...editData,
-      photoPreview: photoPreview || initialPhotoPreview || '',
-    });
+  const handleEditCancel = () => {
     setEditOpen(false);
+    setUpdateError(null);
+  };
+
+  const handleEditSave = async (e) => {
+    e.preventDefault();
+    
+    // Validate that all required fields are not empty
+    if (!editData.email || !editData.email.trim()) {
+      setUpdateError('Email cannot be empty.');
+      return;
+    }
+    if (!editData.name || !editData.name.trim()) {
+      setUpdateError('Name cannot be empty.');
+      return;
+    }
+    if (!editData.surname || !editData.surname.trim()) {
+      setUpdateError('Surname cannot be empty.');
+      return;
+    }
+    if (!editData.username || !editData.username.trim()) {
+      setUpdateError('Username cannot be empty.');
+      return;
+    }
+    if (!editData.profession || !editData.profession.trim()) {
+      setUpdateError('Profession cannot be empty.');
+      return;
+    }
+
+    setIsUpdating(true);
+    setUpdateError(null);
+
+    try {
+      const updatedUser = await updateUser({
+        email: editData.email.trim(),
+        name: editData.name.trim(),
+        surname: editData.surname.trim(),
+        username: editData.username.trim(),
+        profession: editData.profession.trim(),
+        photo_url: null
+      });
+
+      // Update local user state
+      setUser(updatedUser);
+      
+      // Call the callback to update parent state
+      if (onSaveProfile) {
+        onSaveProfile(updatedUser);
+      }
+
+      setEditOpen(false);
+    } catch (error) {
+      setUpdateError(error.message || 'Failed to update profile. Please try again.');
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   const openPasswordModal = () => {
@@ -187,21 +228,74 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
     }
   };
 
-  const handlePwdSave = (e) => {
+  const handlePwdSave = async (e) => {
     e.preventDefault();
+    
+    // Validate fields
+    if (!pwdData.current || !pwdData.current.trim()) {
+      setPwdError('Current password cannot be empty.');
+      return;
+    }
+    if (!pwdData.next || !pwdData.next.trim()) {
+      setPwdError('New password cannot be empty.');
+      return;
+    }
+    if (pwdData.next.length < 6) {
+      setPwdError('New password must be at least 6 characters long.');
+      return;
+    }
     if (pwdData.next !== pwdData.confirm) {
       setPwdError('New password and confirmation do not match.');
       return;
     }
-    alert('Password updated successfully');
-    setPasswordOpen(false);
+
+    setIsUpdatingPassword(true);
+    setPwdError('');
+
+    try {
+      await updatePassword(pwdData.current, pwdData.next);
+      
+      // Password updated successfully - reset form and close modal
+      setPwdData({ current: '', next: '', confirm: '' });
+      setShowPwd({ current: false, next: false, confirm: false });
+      setPasswordOpen(false);
+      
+      // Call callback to handle logout (for security, user must login again)
+      if (onPasswordUpdated) {
+        onPasswordUpdated();
+      }
+    } catch (error) {
+      setPwdError(error.message || 'Failed to update password. Please try again.');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
   };
 
-  const openDeleteModal = () => setDeleteOpen(true);
-  const handleDeleteCancel = () => setDeleteOpen(false);
-  const handleDeleteConfirm = () => {
+  const openDeleteModal = () => {
+    setDeleteOpen(true);
+    setDeleteError(null);
+  };
+  
+  const handleDeleteCancel = () => {
     setDeleteOpen(false);
-    onDeleteAccount && onDeleteAccount();
+    setDeleteError(null);
+  };
+  
+  const handleDeleteConfirm = async () => {
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await deleteUser();
+      
+      // Call the callback to handle logout/navigation
+      if (onDeleteAccount) {
+        onDeleteAccount();
+      }
+    } catch (error) {
+      setDeleteError(error.message || 'Failed to delete account. Please try again.');
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -231,29 +325,47 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
             <h2 className="modal-title">Edit Profile</h2>
             <form onSubmit={handleEditSave} className="modal-form">
               <div className="form-row">
-                <label>Profile Photo
-                  <input type="file" name="photo" accept="image/*" onChange={handleEditChange} />
+                <label>Name
+                  <input type="text" name="name" value={editData.name || ''} onChange={handleEditChange} disabled={isUpdating} required />
                 </label>
-                <img src={photoPreview || avatarDefault} alt="Preview" className="profile-photo modal-photo-preview" />
+              </div>
+              <div className="form-row">
+                <label>Surname
+                  <input type="text" name="surname" value={editData.surname || ''} onChange={handleEditChange} disabled={isUpdating} required />
+                </label>
               </div>
               <div className="form-row">
                 <label>Email
-                  <input type="email" name="email" value={editData.email} onChange={handleEditChange} />
+                  <input type="email" name="email" value={editData.email || ''} onChange={handleEditChange} disabled={isUpdating} required />
                 </label>
               </div>
               <div className="form-row">
                 <label>Username
-                  <input type="text" name="username" value={editData.username} onChange={handleEditChange} />
+                  <input type="text" name="username" value={editData.username || ''} onChange={handleEditChange} disabled={isUpdating} required />
                 </label>
               </div>
               <div className="form-row">
                 <label>Profession
-                  <input type="text" name="profession" value={editData.profession} onChange={handleEditChange} />
+                  <input type="text" name="profession" value={editData.profession || ''} onChange={handleEditChange} disabled={isUpdating} required />
                 </label>
               </div>
+              {updateError && (
+                <div className="error-text" role="alert" style={{
+                  marginTop: '0.5rem',
+                  padding: '0.75rem',
+                  backgroundColor: '#fee',
+                  color: '#c33',
+                  borderRadius: '4px',
+                  border: '1px solid #fcc'
+                }}>
+                  {updateError}
+                </div>
+              )}
               <div className="modal-actions">
-                <button type="button" className="modal-btn cancel-btn gray-btn" onClick={handleEditCancel}>Cancel</button>
-                <button type="submit" className="modal-btn save-btn">Save</button>
+                <button type="button" className="modal-btn cancel-btn gray-btn" onClick={handleEditCancel} disabled={isUpdating}>Cancel</button>
+                <button type="submit" className="modal-btn save-btn" disabled={isUpdating || !editData.email?.trim() || !editData.name?.trim() || !editData.surname?.trim() || !editData.username?.trim() || !editData.profession?.trim()}>
+                  {isUpdating ? 'Updating...' : 'Update'}
+                </button>
               </div>
             </form>
           </div>
@@ -308,8 +420,15 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
               </div>
               {pwdError && <div className="error-text" role="alert">{pwdError}</div>}
               <div className="modal-actions">
-                <button type="button" className="modal-btn cancel-btn gray-btn" onClick={() => setPasswordOpen(false)}>Cancel</button>
-                <button type="submit" className="modal-btn save-btn">Save</button>
+                <button type="button" className="modal-btn cancel-btn gray-btn" onClick={() => {
+                  setPasswordOpen(false);
+                  setPwdData({ current: '', next: '', confirm: '' });
+                  setPwdError('');
+                  setShowPwd({ current: false, next: false, confirm: false });
+                }} disabled={isUpdatingPassword}>Cancel</button>
+                <button type="submit" className="modal-btn save-btn" disabled={isUpdatingPassword || !pwdData.current || !pwdData.next || !pwdData.confirm || pwdData.next.length < 6 || pwdData.next !== pwdData.confirm}>
+                  {isUpdatingPassword ? 'Updating...' : 'Update Password'}
+                </button>
               </div>
             </form>
           </div>
@@ -321,11 +440,28 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
       {deleteOpen && (
         <div className="modal-overlay">
           <div className="modal" role="dialog" aria-modal="true">
-            <h2 className="modal-title">Delete account</h2>
-            <p>Are you sure you want to delete your account? This action cannot be taken back.</p>
+            <h2 className="modal-title">Delete Account</h2>
+            <p>Are you sure you want to delete your account? This action cannot be undone.</p>
+            <p style={{ color: '#dc2626', marginTop: '0.5rem', fontWeight: '500' }}>
+              All your data will be permanently deleted.
+            </p>
+            {deleteError && (
+              <div className="error-text" role="alert" style={{
+                marginTop: '1rem',
+                padding: '0.75rem',
+                backgroundColor: '#fee',
+                color: '#c33',
+                borderRadius: '4px',
+                border: '1px solid #fcc'
+              }}>
+                {deleteError}
+              </div>
+            )}
             <div className="modal-actions">
-              <button type="button" className="modal-btn cancel-btn gray-btn" onClick={handleDeleteCancel}>Cancel</button>
-              <button type="button" className="modal-btn danger-btn" onClick={handleDeleteConfirm}>Delete</button>
+              <button type="button" className="modal-btn cancel-btn gray-btn" onClick={handleDeleteCancel} disabled={isDeleting}>Cancel</button>
+              <button type="button" className="modal-btn danger-btn" onClick={handleDeleteConfirm} disabled={isDeleting}>
+                {isDeleting ? 'Deleting...' : 'Delete Account'}
+              </button>
             </div>
           </div>
           <div className="modal-blur"></div>
