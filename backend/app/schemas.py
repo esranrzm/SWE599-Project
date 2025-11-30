@@ -61,6 +61,7 @@ class ErrorResponse(BaseModel):
 class CommunityCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: str = Field(..., min_length=1, max_length=500)
+    # tabs_config will be stored in separate table later, not in communities table
 
 
 class CommunityUpdate(BaseModel):

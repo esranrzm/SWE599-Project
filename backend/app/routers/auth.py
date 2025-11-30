@@ -100,6 +100,7 @@ async def register(user_data: UserRegistration, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 async def login(credentials: UserLogin, db: Session = Depends(get_db)):
+    logger.info(f"Login attempt for username: {credentials.username}")
     try:
         # Find user by username
         user = db.query(User).filter(User.username == credentials.username).first()
