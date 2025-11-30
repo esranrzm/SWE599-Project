@@ -213,9 +213,26 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     setIsCreating(true);
 
     try {
+      const tabsData = tabs.length > 0 ? tabs.map((tab, tabIndex) => ({
+        name: tab.name,
+        color: tab.color,
+        description: tab.description || null,
+        display_order: tabIndex,
+        inputTypes: tab.inputTypes.map((input, inputIndex) => ({
+          type: input.type,
+          name: input.name,
+          display_order: inputIndex,
+          items: input.items.map((item, itemIndex) => ({
+            value: item,
+            display_order: itemIndex
+          }))
+        }))
+      })) : null;
+
       const communityData = {
         title: title.trim(),
-        description: description.trim()
+        description: description.trim(),
+        tabs: tabsData
       };
 
       const response = await createCommunity(communityData);
@@ -231,6 +248,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
         creator_id: response.creator_id,
         createdAt: response.created_at,
         updatedAt: response.updated_at,
+        tabs_config: response.tabs || null,
       };
       
       // Reset form

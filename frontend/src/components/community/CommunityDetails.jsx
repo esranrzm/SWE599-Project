@@ -94,6 +94,19 @@ const createId = () => {
 };
 
 const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunityUpdated }) => {
+  const communityTabs = useMemo(() => {
+    if (community?.tabs && Array.isArray(community.tabs) && community.tabs.length > 0) {
+      return community.tabs;
+    }
+    if (community?.tabs_config && Array.isArray(community.tabs_config) && community.tabs_config.length > 0) {
+      return community.tabs_config;
+    }
+    return Object.values(categories);
+  }, [community?.tabs, community?.tabs_config]);
+
+  const [selectedCategory, setSelectedCategory] = useState(() => {
+    return communityTabs.length > 0 ? communityTabs[0].id : 'volunteering';
+  });
   const [selectedInputType, setSelectedInputType] = useState('');
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [inputs, setInputs] = useState(() => {
@@ -211,6 +224,78 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
       return;
     }
     handleNewEntryAdded(formState.freeText.trim(), 'Free text');
+  };
+
+  const selectedTab = useMemo(() => {
+    return communityTabs.find(tab => tab.id === selectedCategory) || communityTabs[0];
+  }, [communityTabs, selectedCategory]);
+
+  // Get available input types for the selected category
+  const getAvailableInputTypes = () => {
+    // Handle both API format (inputTypes) and frontend format
+    const inputTypes = selectedTab?.inputTypes || selectedTab?.input_types || [];
+    if (Array.isArray(inputTypes) && inputTypes.length > 0) {
+      // Use input types from community config
+      return inputTypes.map(inputType => ({
+        value: inputType.type === 'free text' ? 'freeText' : 
+               inputType.type === 'dropdown list' ? 'dropdownList' : 
+               inputType.type === 'multiple select' ? 'multipleSelect' : inputType.type,
+        label: inputType.name || inputType.type,
+        config: inputType // Store full config for accessing items
+      }));
+    }
+    // Fallback to default categories
+    return categories[selectedCategory]?.inputTypes || [];
+  };
+
+  // Get dropdown items for the selected input type
+  const getDropdownItems = (inputTypeValue) => {
+    const availableTypes = getAvailableInputTypes();
+    const inputTypeConfig = availableTypes.find(type => type.value === inputTypeValue);
+    if (inputTypeConfig?.config) {
+      // Handle both API format (items array with objects) and frontend format (items array with strings)
+      const items = inputTypeConfig.config.items || [];
+      if (items.length > 0) {
+        // If items are objects with 'value' property (API format), extract values
+        if (typeof items[0] === 'object' && items[0].value) {
+          return items.map(item => item.value);
+        }
+        // If items are strings (frontend format), return as is
+        return items;
+      }
+    }
+    // Fallback to default category items
+    return categoryDropdownItems[selectedCategory] || [];
+  };
+
+  // Get multi-select options for the selected input type
+  const getMultiSelectOptions = (inputTypeValue) => {
+    const availableTypes = getAvailableInputTypes();
+    const inputTypeConfig = availableTypes.find(type => type.value === inputTypeValue);
+    if (inputTypeConfig?.config) {
+      // Handle both API format (items array with objects) and frontend format (items array with strings)
+      const items = inputTypeConfig.config.items || [];
+      if (items.length > 0) {
+        // If items are objects with 'value' property (API format), extract values
+        if (typeof items[0] === 'object' && items[0].value) {
+          return items.map(item => item.value);
+        }
+        // If items are strings (frontend format), return as is
+        return items;
+      }
+    }
+    // Fallback to default category options
+    return categoryMultiSelectOptions[selectedCategory] || [];
+  };
+
+  // Handle category change
+  const handleCategoryChange = (categoryId) => {
+    setSelectedCategory(categoryId);
+    setSelectedInputType('');
+    setIsFormVisible(false);
+    setFormError('');
+    resetFormState();
+    setTypeFilter('all');
   };
 
   const handleAddDropdown = () => {
