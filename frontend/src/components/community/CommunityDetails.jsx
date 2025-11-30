@@ -193,14 +193,15 @@ const createId = () => {
 };
 
 const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunityUpdated }) => {
-  // Get tabs from community config or use defaults
   const communityTabs = useMemo(() => {
+    if (community?.tabs && Array.isArray(community.tabs) && community.tabs.length > 0) {
+      return community.tabs;
+    }
     if (community?.tabs_config && Array.isArray(community.tabs_config) && community.tabs_config.length > 0) {
       return community.tabs_config;
     }
-    // Fallback to default categories for backward compatibility
     return Object.values(categories);
-  }, [community?.tabs_config]);
+  }, [community?.tabs, community?.tabs_config]);
 
   const [selectedCategory, setSelectedCategory] = useState(() => {
     return communityTabs.length > 0 ? communityTabs[0].id : 'volunteering';
@@ -336,16 +337,17 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     handleNewEntryAdded(formState.freeText.trim(), 'Free text');
   };
 
-  // Get the selected tab/category
   const selectedTab = useMemo(() => {
     return communityTabs.find(tab => tab.id === selectedCategory) || communityTabs[0];
   }, [communityTabs, selectedCategory]);
 
   // Get available input types for the selected category
   const getAvailableInputTypes = () => {
-    if (selectedTab?.inputTypes && Array.isArray(selectedTab.inputTypes)) {
+    // Handle both API format (inputTypes) and frontend format
+    const inputTypes = selectedTab?.inputTypes || selectedTab?.input_types || [];
+    if (Array.isArray(inputTypes) && inputTypes.length > 0) {
       // Use input types from community config
-      return selectedTab.inputTypes.map(inputType => ({
+      return inputTypes.map(inputType => ({
         value: inputType.type === 'free text' ? 'freeText' : 
                inputType.type === 'dropdown list' ? 'dropdownList' : 
                inputType.type === 'multiple select' ? 'multipleSelect' : inputType.type,
@@ -361,8 +363,17 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   const getDropdownItems = (inputTypeValue) => {
     const availableTypes = getAvailableInputTypes();
     const inputTypeConfig = availableTypes.find(type => type.value === inputTypeValue);
-    if (inputTypeConfig?.config?.items && Array.isArray(inputTypeConfig.config.items)) {
-      return inputTypeConfig.config.items;
+    if (inputTypeConfig?.config) {
+      // Handle both API format (items array with objects) and frontend format (items array with strings)
+      const items = inputTypeConfig.config.items || [];
+      if (items.length > 0) {
+        // If items are objects with 'value' property (API format), extract values
+        if (typeof items[0] === 'object' && items[0].value) {
+          return items.map(item => item.value);
+        }
+        // If items are strings (frontend format), return as is
+        return items;
+      }
     }
     // Fallback to default category items
     return categoryDropdownItems[selectedCategory] || [];
@@ -372,8 +383,17 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   const getMultiSelectOptions = (inputTypeValue) => {
     const availableTypes = getAvailableInputTypes();
     const inputTypeConfig = availableTypes.find(type => type.value === inputTypeValue);
-    if (inputTypeConfig?.config?.items && Array.isArray(inputTypeConfig.config.items)) {
-      return inputTypeConfig.config.items;
+    if (inputTypeConfig?.config) {
+      // Handle both API format (items array with objects) and frontend format (items array with strings)
+      const items = inputTypeConfig.config.items || [];
+      if (items.length > 0) {
+        // If items are objects with 'value' property (API format), extract values
+        if (typeof items[0] === 'object' && items[0].value) {
+          return items.map(item => item.value);
+        }
+        // If items are strings (frontend format), return as is
+        return items;
+      }
     }
     // Fallback to default category options
     return categoryMultiSelectOptions[selectedCategory] || [];

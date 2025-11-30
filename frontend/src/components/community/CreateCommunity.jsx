@@ -339,12 +339,26 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     setIsCreating(true);
 
     try {
-      // Note: tabs_config will be stored in separate table later
-      // For now, we just create the community without tabs
+      const tabsData = tabs.length > 0 ? tabs.map((tab, tabIndex) => ({
+        name: tab.name,
+        color: tab.color,
+        description: tab.description || null,
+        display_order: tabIndex,
+        inputTypes: tab.inputTypes.map((input, inputIndex) => ({
+          type: input.type,
+          name: input.name,
+          display_order: inputIndex,
+          items: input.items.map((item, itemIndex) => ({
+            value: item,
+            display_order: itemIndex
+          }))
+        }))
+      })) : null;
+
       const communityData = {
         title: title.trim(),
         description: description.trim(),
-        // tabs_config will be saved to separate table in future implementation
+        tabs: tabsData
       };
       
       // Log tabs for now (will be saved to database later)
@@ -364,18 +378,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
         creator_id: response.creator_id,
         createdAt: response.created_at,
         updatedAt: response.updated_at,
-        // tabs_config will come from separate table in future
-        tabs_config: tabs.length > 0 ? tabs.map(tab => ({
-          id: tab.id,
-          name: tab.name,
-          color: tab.color,
-          description: tab.description,
-          inputTypes: tab.inputTypes.map(input => ({
-            type: input.type,
-            name: input.name,
-            items: input.items || []
-          }))
-        })) : null,
+        tabs_config: response.tabs || null,
       };
       
       setTitle('');

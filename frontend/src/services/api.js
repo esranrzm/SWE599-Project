@@ -385,7 +385,8 @@ export const createCommunity = async (communityData) => {
       },
       body: JSON.stringify({
         title: communityData.title,
-        description: communityData.description
+        description: communityData.description,
+        tabs: communityData.tabs || null
       }),
     });
 

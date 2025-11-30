@@ -4,9 +4,10 @@ from typing import List
 import logging
 
 from app.database import get_db
-from app.models import Community, User
+from app.models import Community, User, CommunityTab, InputType, InputTypeItem
 from app.schemas import CommunityCreate, CommunityResponse, CommunityUpdate
 from app.dependencies import get_current_user
+from sqlalchemy.orm import joinedload
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -34,12 +35,60 @@ async def create_community(
         )
         
         db.add(new_community)
+        db.flush()  # Flush to get the community ID
+        
+        # Create tabs if provided
+        if community_data.tabs:
+            for tab_order, tab_data in enumerate(community_data.tabs):
+                new_tab = CommunityTab(
+                    community_id=new_community.id,
+                    name=tab_data.name,
+                    color=tab_data.color,
+                    description=tab_data.description,
+                    display_order=tab_data.display_order if tab_data.display_order else tab_order
+                )
+                db.add(new_tab)
+                db.flush()  # Flush to get the tab ID
+                
+                # Create input types for this tab
+                # Access inputTypes - Pydantic will handle the alias with populate_by_name=True
+                input_types_data = tab_data.model_dump().get('inputTypes', [])
+                if input_types_data:
+                    for input_order, input_data in enumerate(input_types_data):
+                        new_input_type = InputType(
+                            tab_id=new_tab.id,
+                            type=input_data.type,
+                            name=input_data.name,
+                            display_order=input_data.display_order if input_data.display_order else input_order
+                        )
+                        db.add(new_input_type)
+                        db.flush()  # Flush to get the input type ID
+                        
+                        # Create items for dropdown list and multiple select
+                        if input_data.items:
+                            for item_order, item_data in enumerate(input_data.items):
+                                new_item = InputTypeItem(
+                                    input_type_id=new_input_type.id,
+                                    value=item_data.value,
+                                    display_order=item_data.display_order if item_data.display_order else item_order
+                                )
+                                db.add(new_item)
+        
         db.commit()
         db.refresh(new_community)
         
+        # Eager load relationships for response
+        db.refresh(new_community)
+        community_with_tabs = db.query(Community)\
+            .options(
+                joinedload(Community.tabs).joinedload(CommunityTab.input_types).joinedload(InputType.items)
+            )\
+            .filter(Community.id == new_community.id)\
+            .first()
+        
         logger.info(f"Community created: {new_community.id} by user {current_user.id}")
         
-        return CommunityResponse.model_validate(new_community)
+        return CommunityResponse.model_validate(community_with_tabs)
         
     except Exception as e:
         db.rollback()
@@ -74,6 +123,9 @@ async def get_all_communities(
             limit = 100
         
         communities = db.query(Community)\
+            .options(
+                joinedload(Community.tabs).joinedload(CommunityTab.input_types).joinedload(InputType.items)
+            )\
             .order_by(Community.created_at.desc())\
             .offset(skip)\
             .limit(limit)\
@@ -116,6 +168,9 @@ async def get_my_communities(
             limit = 100
         
         communities = db.query(Community)\
+            .options(
+                joinedload(Community.tabs).joinedload(CommunityTab.input_types).joinedload(InputType.items)
+            )\
             .filter(Community.creator_id == current_user.id)\
             .order_by(Community.created_at.desc())\
             .offset(skip)\
@@ -159,6 +214,9 @@ async def get_others_communities(
             limit = 100
         
         communities = db.query(Community)\
+            .options(
+                joinedload(Community.tabs).joinedload(CommunityTab.input_types).joinedload(InputType.items)
+            )\
             .filter(Community.creator_id != current_user.id)\
             .order_by(Community.created_at.desc())\
             .offset(skip)\
@@ -188,7 +246,12 @@ async def get_community_by_id(
     Returns the community information if found.
     """
     try:
-        community = db.query(Community).filter(Community.id == community_id).first()
+        community = db.query(Community)\
+            .options(
+                joinedload(Community.tabs).joinedload(CommunityTab.input_types).joinedload(InputType.items)
+            )\
+            .filter(Community.id == community_id)\
+            .first()
         
         if not community:
             raise HTTPException(
@@ -247,11 +310,18 @@ async def update_community(
         community.description = community_data.description
         
         db.commit()
-        db.refresh(community)
+        
+        # Eager load relationships for response
+        updated_community = db.query(Community)\
+            .options(
+                joinedload(Community.tabs).joinedload(CommunityTab.input_types).joinedload(InputType.items)
+            )\
+            .filter(Community.id == community_id)\
+            .first()
         
         logger.info(f"Community updated: {community_id} by user {current_user.id}")
         
-        return CommunityResponse.model_validate(community)
+        return CommunityResponse.model_validate(updated_community)
         
     except HTTPException:
         raise
