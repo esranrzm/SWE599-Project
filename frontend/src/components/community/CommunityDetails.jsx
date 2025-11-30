@@ -1,31 +1,125 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import './CommunityDetails.css';
 import { deleteCommunity, updateCommunity } from '../../services/api';
 
-const inputTypeOptions = [
-  { value: 'freeText', label: 'Free text' },
-  { value: 'multipleSelect', label: 'Multiple select' },
-  { value: 'dropdownList', label: 'Drop down list' },
-];
+// Category definitions with descriptions
+const categories = {
+  volunteering: {
+    id: 'volunteering',
+    label: 'Volunteering',
+    description: 'Share your time, skills, and availability to help with community activities and projects.',
+    color: '#f97316', // orange
+    inputTypes: [
+      { value: 'freeText', label: 'Free text' },
+      { value: 'multipleSelect', label: 'Skills selection' },
+      { value: 'timeAvailability', label: 'Time availability' },
+    ],
+  },
+  itemsNeeded: {
+    id: 'itemsNeeded',
+    label: 'Items Needed',
+    description: 'List physical items, supplies, or materials that the community needs or that you can provide.',
+    color: '#10b981', // green
+    inputTypes: [
+      { value: 'freeText', label: 'Free text' },
+      { value: 'dropdownList', label: 'Item selection' },
+      { value: 'quantityInput', label: 'Quantity & details' },
+    ],
+  },
+  moneyDonations: {
+    id: 'moneyDonations',
+    label: 'Money Donations',
+    description: 'Contribute financial support or organize fundraising activities for community initiatives.',
+    color: '#8b5cf6', // purple
+    inputTypes: [
+      { value: 'freeText', label: 'Free text' },
+      { value: 'amountInput', label: 'Donation amount' },
+      { value: 'fundraisingIdea', label: 'Fundraising idea' },
+    ],
+  },
+  recommendations: {
+    id: 'recommendations',
+    label: 'Recommendations',
+    description: 'Suggest ideas, resources, contacts, or strategies to improve community projects and outcomes.',
+    color: '#dc2626', // dark red
+    inputTypes: [
+      { value: 'freeText', label: 'Free text' },
+      { value: 'contactInfo', label: 'Contact recommendation' },
+      { value: 'resourceLink', label: 'Resource link' },
+    ],
+  },
+};
 
-const dropdownItems = [
-  'Student Chair',
-  'Classroom Heater',
-  'Whiteboard',
-  'School Supplies Kit',
-];
+// Category-specific dropdown items
+const categoryDropdownItems = {
+  itemsNeeded: [
+    'Student Chair',
+    'Classroom Heater',
+    'Whiteboard',
+    'School Supplies Kit',
+    'Books',
+    'Computers',
+    'Desks',
+    'Lighting Equipment',
+  ],
+  volunteering: [
+    'Construction work',
+    'Teaching/Tutoring',
+    'Event organization',
+    'Administrative support',
+    'Transportation',
+    'Technical support',
+  ],
+  moneyDonations: [
+    'One-time donation',
+    'Monthly contribution',
+    'Fundraising event',
+    'Sponsorship',
+  ],
+  recommendations: [
+    'Local business contact',
+    'NGO partnership',
+    'Government resource',
+    'Educational resource',
+  ],
+};
 
-const multiSelectOptions = [
-  'I know how to construct a wall',
-  'I can work in library set up',
-  'I can work in tool management',
-  'I can help with electrical installations',
-];
+// Category-specific multi-select options
+const categoryMultiSelectOptions = {
+  volunteering: [
+    'I know how to construct a wall',
+    'I can work in library set up',
+    'I can work in tool management',
+    'I can help with electrical installations',
+    'I can teach/tutor',
+    'I can help with event planning',
+    'I have transportation available',
+  ],
+  itemsNeeded: [
+    'I can donate new items',
+    'I can donate used items in good condition',
+    'I can help with item collection',
+    'I can provide storage space',
+  ],
+  moneyDonations: [
+    'I can make a one-time donation',
+    'I can commit to monthly donations',
+    'I can help organize fundraising',
+    'I have corporate sponsorship contacts',
+  ],
+  recommendations: [
+    'I know local suppliers',
+    'I have NGO contacts',
+    'I know government resources',
+    'I have educational contacts',
+  ],
+};
 
 const defaultInputs = [
   {
     id: '1',
     creator: 'alivel123',
+    category: 'moneyDonations',
     type: 'Free text',
     createdAt: '2025-10-30T09:30:00Z',
     details:
@@ -34,6 +128,7 @@ const defaultInputs = [
   {
     id: '2',
     creator: 'alivel124',
+    category: 'itemsNeeded',
     type: 'Drop down list',
     createdAt: '2025-10-30T16:45:00Z',
     details: 'Student Chair — I can donate 100 student chairs.',
@@ -41,6 +136,7 @@ const defaultInputs = [
   {
     id: '3',
     creator: 'alivel125',
+    category: 'volunteering',
     type: 'Free text',
     createdAt: '2025-10-31T08:21:00Z',
     details: 'I will contact local carpenters to see if they can help.',
@@ -48,6 +144,7 @@ const defaultInputs = [
   {
     id: '4',
     creator: 'alivel126',
+    category: 'volunteering',
     type: 'Multiple select',
     createdAt: '2025-11-01T10:12:00Z',
     details:
@@ -56,6 +153,7 @@ const defaultInputs = [
   {
     id: '5',
     creator: 'alivel127',
+    category: 'itemsNeeded',
     type: 'Free text',
     createdAt: '2025-11-02T13:57:00Z',
     details: 'I can organize transport for donated items from nearby cities.',
@@ -63,6 +161,7 @@ const defaultInputs = [
   {
     id: '6',
     creator: 'alivel128',
+    category: 'recommendations',
     type: 'Free text',
     createdAt: '2025-10-30T12:05:00Z',
     details:
@@ -112,7 +211,11 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   const [inputs, setInputs] = useState(() => {
     const provided = Array.isArray(community?.inputs) ? community.inputs : [];
     if (provided.length) {
-      return provided;
+      // Ensure all inputs have a category
+      return provided.map(input => ({
+        ...input,
+        category: input.category || (communityTabs.length > 0 ? communityTabs[0].id : 'volunteering'),
+      }));
     }
     return defaultInputs;
   });
@@ -167,11 +270,18 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   };
 
   const sortedAndFilteredInputs = useMemo(() => {
-    const filtered =
-      typeFilter === 'all'
-        ? inputs
-        : inputs.filter((input) => input.type === typeFilter);
+    // First filter by category
+    let filtered = inputs.filter((input) => {
+      const inputCategory = input.category || 'volunteering';
+      return inputCategory === selectedCategory;
+    });
 
+    // Then filter by type if not 'all'
+    if (typeFilter !== 'all') {
+      filtered = filtered.filter((input) => input.type === typeFilter);
+    }
+
+    // Sort the filtered results
     const sorted = [...filtered].sort((a, b) => {
       if (sortConfig.column === 'createdAt') {
         const first = new Date(a.createdAt).getTime();
@@ -193,7 +303,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     });
 
     return sorted;
-  }, [inputs, sortConfig, typeFilter]);
+  }, [inputs, sortConfig, typeFilter, selectedCategory]);
 
   const resetFormState = () => {
     setFormState({
@@ -207,7 +317,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   const handleNewEntryAdded = (detailsText, typeLabel) => {
     const newInput = {
       id: createId(),
-      creator: currentUser,
+      creator: currentUser?.username || currentUser || 'Anonymous',
+      category: selectedCategory,
       type: typeLabel,
       createdAt: new Date().toISOString(),
       details: detailsText,
@@ -307,7 +418,13 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     const detailsText = explanation
       ? `${item} — ${explanation.trim()}`
       : item;
-    handleNewEntryAdded(detailsText, 'Drop down list');
+    
+    // Get the label for the current input type
+    const availableInputTypes = getAvailableInputTypes();
+    const currentInputType = availableInputTypes.find(opt => opt.value === selectedInputType);
+    const typeLabel = currentInputType?.label || 'Drop down list';
+    
+    handleNewEntryAdded(detailsText, typeLabel);
   };
 
   const handleAddMultipleSelect = () => {
@@ -316,9 +433,13 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
       setFormError('Please select at least one option before adding.');
       return;
     }
+    // Get the label for the current input type
+    const availableInputTypes = getAvailableInputTypes();
+    const currentInputType = availableInputTypes.find(opt => opt.value === selectedInputType);
+    const typeLabel = currentInputType?.label || 'Multiple select';
     handleNewEntryAdded(
-      `Skills: ${selections.join(', ')}`,
-      'Multiple select',
+      `Selected: ${selections.join(', ')}`,
+      typeLabel,
     );
   };
 
@@ -334,14 +455,32 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     });
   };
 
+  // Update selected category when communityTabs change
+  useEffect(() => {
+    if (communityTabs.length > 0 && !communityTabs.find(tab => tab.id === selectedCategory)) {
+      setSelectedCategory(communityTabs[0].id);
+    }
+  }, [communityTabs, selectedCategory]);
+
+  // Update input type when category changes to reset form
+  useEffect(() => {
+    setSelectedInputType('');
+    setIsFormVisible(false);
+    setFormError('');
+    resetFormState();
+  }, [selectedCategory]);
+
   const renderInputForm = () => {
     if (!isFormVisible || !selectedInputType) {
       return (
         <div className="input-placeholder-card">
-          <p>Select an input type and click on “Add New Community Input” to get started.</p>
+          <p>Select an input type and click on "Add New Community Input" to get started.</p>
         </div>
       );
     }
+
+    const availableInputTypes = getAvailableInputTypes();
+    const currentInputType = availableInputTypes.find(opt => opt.value === selectedInputType);
 
     return (
       <div className="input-form-card">
@@ -372,11 +511,11 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             </button>
           </>
         )}
-        {selectedInputType === 'multipleSelect' && (
+        {(selectedInputType === 'multipleSelect' || selectedInputType === 'skillsSelection') && (
           <>
             <fieldset className="form-fieldset">
-              <legend className="form-label">Available skills</legend>
-              {multiSelectOptions.map((option) => (
+              <legend className="form-label">Select options</legend>
+              {getMultiSelectOptions(selectedInputType).map((option) => (
                 <label key={option} className="checkbox-option">
                   <input
                     type="checkbox"
@@ -396,10 +535,16 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             </button>
           </>
         )}
-        {selectedInputType === 'dropdownList' && (
+        {(selectedInputType === 'dropdownList' || selectedInputType === 'itemSelection' || 
+          selectedInputType === 'quantityInput' || selectedInputType === 'amountInput' ||
+          selectedInputType === 'timeAvailability' || selectedInputType === 'fundraisingIdea' ||
+          selectedInputType === 'contactInfo' || selectedInputType === 'resourceLink') && (
           <>
             <label className="form-label" htmlFor="dropdownItemSelect">
-              Needed items
+              {selectedCategory === 'itemsNeeded' ? 'Item' : 
+               selectedCategory === 'moneyDonations' ? 'Donation type' :
+               selectedCategory === 'volunteering' ? 'Activity type' :
+               'Recommendation type'}
             </label>
             <select
               id="dropdownItemSelect"
@@ -415,20 +560,28 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                 }))
               }
             >
-              <option value="">Select item</option>
-              {dropdownItems.map((item) => (
+              <option value="">Select option</option>
+              {getDropdownItems(selectedInputType).map((item) => (
                 <option key={item} value={item}>
                   {item}
                 </option>
               ))}
             </select>
             <label className="form-label" htmlFor="dropdownExplanation">
-              Explanation
+              {selectedCategory === 'itemsNeeded' ? 'Details (quantity, condition, etc.)' :
+               selectedCategory === 'moneyDonations' ? 'Details (amount, frequency, etc.)' :
+               selectedCategory === 'volunteering' ? 'Details (availability, schedule, etc.)' :
+               'Details'}
             </label>
             <textarea
               id="dropdownExplanation"
               className="form-textarea"
-              placeholder="Ex: I can donate 100 student chairs"
+              placeholder={
+                selectedCategory === 'itemsNeeded' ? 'Ex: I can donate 100 student chairs' :
+                selectedCategory === 'moneyDonations' ? 'Ex: I can donate $500 monthly' :
+                selectedCategory === 'volunteering' ? 'Ex: Available weekends, 4 hours per day' :
+                'Enter details...'
+              }
               value={formState.dropdown.explanation}
               onChange={(event) =>
                 setFormState((prev) => ({
@@ -620,6 +773,35 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           <div className="inputs-header">
             <h2>Community Inputs</h2>
           </div>
+          
+          {/* Category Tabs */}
+          {communityTabs.length > 0 && (
+            <>
+              <div className="category-tabs-container">
+                {communityTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`category-tab ${selectedCategory === tab.id ? 'active' : ''}`}
+                    onClick={() => handleCategoryChange(tab.id)}
+                    style={{
+                      '--tab-color': tab.color || '#f97316',
+                    }}
+                  >
+                    <span className="category-tab-label">{tab.name || tab.label}</span>
+                  </button>
+                ))}
+              </div>
+              
+              {/* Category Description */}
+              {selectedTab?.description && (
+                <div className="category-description">
+                  <p>{selectedTab.description}</p>
+                </div>
+              )}
+            </>
+          )}
+
           <div className="inputs-layout">
             <div className="inputs-table-card">
               <div className="inputs-table-header">
@@ -641,9 +823,11 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                     onChange={(event) => setTypeFilter(event.target.value)}
                   >
                     <option value="all">All types</option>
-                    <option value="Free text">Free text</option>
-                    <option value="Multiple select">Multiple select</option>
-                    <option value="Drop down list">Drop down list</option>
+                    {getAvailableInputTypes().map((inputType) => (
+                      <option key={inputType.value} value={inputType.label}>
+                        {inputType.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="header-cell created-at">
@@ -703,7 +887,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                     }}
                   >
                     <option value="">Select input type</option>
-                    {inputTypeOptions.map((option) => (
+                    {getAvailableInputTypes().map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
