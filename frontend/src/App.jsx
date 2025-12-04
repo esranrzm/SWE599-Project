@@ -105,32 +105,38 @@ function App() {
       if (path.startsWith('/community/') && !path.startsWith('/community/create')) {
         const idStr = path.replace('/community/', '')
         const id = parseInt(idStr, 10)
+        if (isNaN(id)) {
+          // Invalid ID, redirect to main
+          setCurrentView('main')
+          window.history.pushState({ view: 'main' }, '', '/main')
+          return
+        }
         // Set view first, then fetch data
         setCurrentView('communityDetails')
-        // Try to fetch community data if we don't have it or it's a different ID
-        if (!selectedCommunity || selectedCommunity.id !== id) {
-          // Fetch community from API
-          const fetchCommunity = async () => {
-            try {
-              const community = await getCommunityById(id);
-              const mappedCommunity = {
-                id: community.id,
-                title: community.title,
-                description: community.description,
-                creator: community.creator_name,
-                creator_id: community.creator_id,
-                createdAt: community.created_at,
-                updatedAt: community.updated_at,
-              };
-              setSelectedCommunity(mappedCommunity);
-            } catch (err) {
-              console.error('Error fetching community:', err);
-              // Fallback to placeholder
-              setSelectedCommunity({ id, title: `Community ${id}`, description: 'No description provided.' });
-            }
-          };
-          fetchCommunity();
-        }
+        // Always fetch community data to ensure we have latest data including tabs
+        const fetchCommunity = async () => {
+          try {
+            const community = await getCommunityById(id);
+            console.log('Fetched community with tabs:', community);
+            const mappedCommunity = {
+              id: community.id,
+              title: community.title,
+              description: community.description,
+              creator: community.creator_name,
+              creator_id: community.creator_id,
+              createdAt: community.created_at,
+              updatedAt: community.updated_at,
+              tabs: community.tabs || [], // Include tabs with their input types
+            };
+            console.log('Mapped community:', mappedCommunity);
+            setSelectedCommunity(mappedCommunity);
+          } catch (err) {
+            console.error('Error fetching community:', err);
+            // Fallback to placeholder
+            setSelectedCommunity({ id, title: `Community ${id}`, description: 'No description provided.', tabs: [] });
+          }
+        };
+        fetchCommunity();
         return
       }
       if (path.startsWith('/register')) {
@@ -221,10 +227,36 @@ function App() {
     window.history.replaceState({ view: 'login' }, '', '/')
   }
 
-  const handleOpenCommunity = (community) => {
-    setSelectedCommunity(community)
-    setCurrentView('communityDetails')
-    window.history.pushState({ view: 'communityDetails', id: community?.id }, '', `/community/${community?.id || ''}`)
+  const handleOpenCommunity = async (community) => {
+    // Always fetch full community data to ensure we have tabs and input types
+    if (community?.id) {
+      try {
+        const fullCommunity = await getCommunityById(community.id);
+        const mappedCommunity = {
+          id: fullCommunity.id,
+          title: fullCommunity.title,
+          description: fullCommunity.description,
+          creator: fullCommunity.creator_name,
+          creator_id: fullCommunity.creator_id,
+          createdAt: fullCommunity.created_at,
+          updatedAt: fullCommunity.updated_at,
+          tabs: fullCommunity.tabs || [], // Include tabs with their input types
+        };
+        setSelectedCommunity(mappedCommunity);
+        setCurrentView('communityDetails');
+        window.history.pushState({ view: 'communityDetails', id: community.id }, '', `/community/${community.id}`);
+      } catch (err) {
+        console.error('Error fetching community:', err);
+        // Fallback to provided community data
+        setSelectedCommunity(community);
+        setCurrentView('communityDetails');
+        window.history.pushState({ view: 'communityDetails', id: community?.id }, '', `/community/${community?.id || ''}`);
+      }
+    } else {
+      setSelectedCommunity(community);
+      setCurrentView('communityDetails');
+      window.history.pushState({ view: 'communityDetails', id: community?.id }, '', `/community/${community?.id || ''}`);
+    }
   }
 
   const handleCreateCommunity = () => {

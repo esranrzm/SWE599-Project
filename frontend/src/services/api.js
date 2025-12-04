@@ -622,4 +622,185 @@ export const deleteCommunity = async (communityId) => {
   }
 };
 
+/**
+ * Create a new community input
+ * @param {number} communityId - Community ID
+ * @param {Object} inputData - Input data (tab_id, input_type_id, details)
+ * @returns {Promise<Object>} Created input data
+ */
+export const createCommunityInput = async (communityId, inputData) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/communities/${communityId}/inputs/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        community_id: communityId,
+        tab_id: inputData.tab_id,
+        input_type_id: inputData.input_type_id,
+        details: inputData.details
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to create community input');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Create community input error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all community inputs for a community
+ * @param {number} communityId - Community ID
+ * @param {number} tabId - Optional tab ID to filter by
+ * @returns {Promise<Array>} Array of community inputs
+ */
+export const getCommunityInputs = async (communityId, tabId = null) => {
+  try {
+    const queryParams = new URLSearchParams();
+    if (tabId !== null) {
+      queryParams.append('tab_id', tabId);
+    }
+
+    const queryString = queryParams.toString();
+    const url = `${API_BASE_URL}/communities/${communityId}/inputs/${queryString ? `?${queryString}` : ''}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch community inputs');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get community inputs error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get a community input by ID
+ * @param {number} communityId - Community ID
+ * @param {number} inputId - Input ID
+ * @returns {Promise<Object>} Input data
+ */
+export const getCommunityInputById = async (communityId, inputId) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/communities/${communityId}/inputs/${inputId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch community input');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get community input by ID error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update a community input
+ * @param {number} communityId - Community ID
+ * @param {number} inputId - Input ID
+ * @param {Object} inputData - Updated input data (tab_id, input_type_id, details)
+ * @returns {Promise<Object>} Updated input data
+ */
+export const updateCommunityInput = async (communityId, inputId, inputData) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/communities/${communityId}/inputs/${inputId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        tab_id: inputData.tab_id,
+        input_type_id: inputData.input_type_id,
+        details: inputData.details
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to update community input');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Update community input error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a community input
+ * @param {number} communityId - Community ID
+ * @param {number} inputId - Input ID
+ * @returns {Promise<Object>} Success message
+ */
+export const deleteCommunityInput = async (communityId, inputId) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/communities/${communityId}/inputs/${inputId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to delete community input');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Delete community input error:', error);
+    throw error;
+  }
+};
+
 

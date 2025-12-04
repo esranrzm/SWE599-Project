@@ -106,6 +106,28 @@ class InputTypeItem(Base):
         return f"<InputTypeItem(id={self.id}, value='{self.value}', input_type_id={self.input_type_id})>"
 
 
+class CommunityInput(Base):
+    __tablename__ = "community_inputs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    community_id = Column(Integer, ForeignKey("communities.id", ondelete="CASCADE"), nullable=False, index=True)
+    tab_id = Column(Integer, ForeignKey("community_tabs.id", ondelete="CASCADE"), nullable=False, index=True)
+    input_type_id = Column(Integer, ForeignKey("input_types.id", ondelete="CASCADE"), nullable=False, index=True)
+    creator_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    details = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships - will be set after all models are defined
+    community = None
+    tab = None
+    input_type = None
+    creator = None
+
+    def __repr__(self):
+        return f"<CommunityInput(id={self.id}, community_id={self.community_id}, creator_id={self.creator_id})>"
+
+
 # Set up relationships after all models are defined
 Community.tabs = relationship(
     "CommunityTab",
@@ -128,6 +150,40 @@ InputType.items = relationship(
     back_populates="input_type",
     cascade="all, delete-orphan",
     order_by="InputTypeItem.display_order"
+)
+
+# CommunityInput relationships
+CommunityInput.community = relationship("Community", back_populates="inputs")
+CommunityInput.tab = relationship("CommunityTab", back_populates="inputs")
+CommunityInput.input_type = relationship("InputType", back_populates="inputs")
+CommunityInput.creator = relationship("User", back_populates="community_inputs")
+
+# Update Community, CommunityTab, InputType, and User relationships
+Community.inputs = relationship(
+    "CommunityInput",
+    back_populates="community",
+    cascade="all, delete-orphan",
+    order_by="CommunityInput.created_at.desc()"
+)
+
+CommunityTab.inputs = relationship(
+    "CommunityInput",
+    back_populates="tab",
+    cascade="all, delete-orphan",
+    order_by="CommunityInput.created_at.desc()"
+)
+
+InputType.inputs = relationship(
+    "CommunityInput",
+    back_populates="input_type",
+    cascade="all, delete-orphan",
+    order_by="CommunityInput.created_at.desc()"
+)
+
+User.community_inputs = relationship(
+    "CommunityInput",
+    back_populates="creator",
+    cascade="all, delete-orphan"
 )
 
 

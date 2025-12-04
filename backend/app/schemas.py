@@ -135,7 +135,7 @@ class CommunityTabResponse(BaseModel):
     color: str
     description: Optional[str] = None
     display_order: int
-    inputTypes: List[InputTypeResponse] = Field(default_factory=list, alias="inputTypes")
+    inputTypes: List[InputTypeResponse] = Field(default_factory=list, alias="input_types")
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -168,3 +168,31 @@ class CommunityResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+# Community Input Schemas
+class CommunityInputCreate(BaseModel):
+    community_id: int
+    tab_id: int
+    input_type_id: int
+    details: str = Field(..., min_length=1)
+
+
+class CommunityInputUpdate(BaseModel):
+    tab_id: Optional[int] = None
+    input_type_id: Optional[int] = None
+    details: Optional[str] = Field(None, min_length=1)
+
+
+class CommunityInputResponse(BaseModel):
+    id: int
+    community_id: int
+    tab_id: int
+    input_type_id: int
+    creator_id: int
+    creator_username: Optional[str] = None
+    details: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

@@ -52,7 +52,7 @@ async def create_community(
                 
                 # Create input types for this tab
                 # Access inputTypes - Pydantic will handle the alias with populate_by_name=True
-                input_types_data = tab_data.model_dump().get('inputTypes', [])
+                input_types_data = tab_data.inputTypes if hasattr(tab_data, 'inputTypes') and tab_data.inputTypes else []
                 if input_types_data:
                     for input_order, input_data in enumerate(input_types_data):
                         new_input_type = InputType(

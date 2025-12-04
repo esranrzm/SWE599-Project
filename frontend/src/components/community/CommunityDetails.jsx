@@ -1,6 +1,13 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import './CommunityDetails.css';
-import { deleteCommunity, updateCommunity } from '../../services/api';
+import { 
+  deleteCommunity, 
+  updateCommunity, 
+  getCommunityInputs, 
+  createCommunityInput,
+  updateCommunityInput,
+  deleteCommunityInput
+} from '../../services/api';
 
 // Category definitions with descriptions
 const categories = {
@@ -194,31 +201,33 @@ const createId = () => {
 
 const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunityUpdated }) => {
   const communityTabs = useMemo(() => {
+    // First check for tabs from API
     if (community?.tabs && Array.isArray(community.tabs) && community.tabs.length > 0) {
+      console.log('Using tabs from community.tabs:', community.tabs);
       return community.tabs;
     }
+    // Fallback to tabs_config (legacy)
     if (community?.tabs_config && Array.isArray(community.tabs_config) && community.tabs_config.length > 0) {
+      console.log('Using tabs from community.tabs_config:', community.tabs_config);
       return community.tabs_config;
     }
-    return Object.values(categories);
+    // No tabs found - return empty array (don't use default categories)
+    console.log('No tabs found in community:', community);
+    return [];
   }, [community?.tabs, community?.tabs_config]);
 
   const [selectedCategory, setSelectedCategory] = useState(() => {
-    return communityTabs.length > 0 ? communityTabs[0].id : 'volunteering';
+    if (communityTabs.length > 0) {
+      // Use the first tab's ID (could be number or string)
+      return communityTabs[0].id;
+    }
+    return 'volunteering';
   });
   const [selectedInputType, setSelectedInputType] = useState('');
   const [isFormVisible, setIsFormVisible] = useState(false);
-  const [inputs, setInputs] = useState(() => {
-    const provided = Array.isArray(community?.inputs) ? community.inputs : [];
-    if (provided.length) {
-      // Ensure all inputs have a category
-      return provided.map(input => ({
-        ...input,
-        category: input.category || (communityTabs.length > 0 ? communityTabs[0].id : 'volunteering'),
-      }));
-    }
-    return defaultInputs;
-  });
+  const [inputs, setInputs] = useState([]);
+  const [isLoadingInputs, setIsLoadingInputs] = useState(false);
+  const [inputsError, setInputsError] = useState(null);
   const [typeFilter, setTypeFilter] = useState('all');
   const [sortConfig, setSortConfig] = useState({
     column: 'createdAt',
@@ -241,6 +250,19 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     title: '',
     description: ''
   });
+  const [showEditInputDialog, setShowEditInputDialog] = useState(false);
+  const [editingInput, setEditingInput] = useState(null);
+  const [isSavingInput, setIsSavingInput] = useState(false);
+  const [editInputError, setEditInputError] = useState(null);
+  const [editInputForm, setEditInputForm] = useState({
+    tab_id: null,
+    input_type_id: null,
+    details: ''
+  });
+  const [showDeleteInputDialog, setShowDeleteInputDialog] = useState(false);
+  const [deletingInputId, setDeletingInputId] = useState(null);
+  const [isDeletingInput, setIsDeletingInput] = useState(false);
+  const [deleteInputError, setDeleteInputError] = useState(null);
 
   // Use community prop values directly - they will update when prop changes
   const title = community?.title || 'Community Title';
@@ -256,6 +278,52 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   // Check if current user is the creator
   const isCreator = currentUser && community && (currentUser.id === community.creator_id || currentUser.id === community.creatorId);
 
+  // Fetch community inputs when component mounts or community changes
+  useEffect(() => {
+    const fetchInputs = async () => {
+      if (!community?.id) return;
+      
+      setIsLoadingInputs(true);
+      setInputsError(null);
+      
+      try {
+        const fetchedInputs = await getCommunityInputs(community.id);
+        
+        // Map API response to component format
+        const mappedInputs = fetchedInputs.map(input => {
+          // Find the tab for this input
+          const tab = communityTabs.find(t => t.id === input.tab_id);
+          // Find the input type for this input
+          const inputTypes = tab?.inputTypes || tab?.input_types || [];
+          const inputType = inputTypes.find(it => it.id === input.input_type_id);
+          
+          return {
+            id: input.id,
+            creator: input.creator_username || 'Unknown',
+            creator_id: input.creator_id,
+            category: input.tab_id, // Use tab_id as category identifier
+            tab_id: input.tab_id,
+            input_type_id: input.input_type_id,
+            type: inputType?.type || inputType?.name || 'Unknown', // Use type field first
+            createdAt: input.created_at,
+            updatedAt: input.updated_at,
+            details: input.details
+          };
+        });
+        
+        setInputs(mappedInputs);
+      } catch (error) {
+        console.error('Error fetching community inputs:', error);
+        setInputsError(error.message || 'Failed to load community inputs');
+        setInputs([]);
+      } finally {
+        setIsLoadingInputs(false);
+      }
+    };
+    
+    fetchInputs();
+  }, [community?.id, communityTabs]);
+
   const handleSort = (column) => {
     setSortConfig((prev) => {
       if (prev.column === column) {
@@ -270,10 +338,12 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   };
 
   const sortedAndFilteredInputs = useMemo(() => {
-    // First filter by category
+    // First filter by category (tab_id)
     let filtered = inputs.filter((input) => {
-      const inputCategory = input.category || 'volunteering';
-      return inputCategory === selectedCategory;
+      const inputTabId = input.tab_id || input.category;
+      // Compare with selectedCategory directly (could be number or string)
+      return inputTabId === selectedCategory || 
+             (inputTabId && selectedCategory && String(inputTabId) === String(selectedCategory));
     });
 
     // Then filter by type if not 'all'
@@ -284,8 +354,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     // Sort the filtered results
     const sorted = [...filtered].sort((a, b) => {
       if (sortConfig.column === 'createdAt') {
-        const first = new Date(a.createdAt).getTime();
-        const second = new Date(b.createdAt).getTime();
+        const first = new Date(a.createdAt || a.created_at).getTime();
+        const second = new Date(b.createdAt || b.created_at).getTime();
         return sortConfig.direction === 'asc'
           ? first - second
           : second - first;
@@ -303,7 +373,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     });
 
     return sorted;
-  }, [inputs, sortConfig, typeFilter, selectedCategory]);
+  }, [inputs, sortConfig, typeFilter, selectedCategory, communityTabs]);
 
   const resetFormState = () => {
     setFormState({
@@ -314,19 +384,44 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     setFormError('');
   };
 
-  const handleNewEntryAdded = (detailsText, typeLabel) => {
-    const newInput = {
-      id: createId(),
-      creator: currentUser?.username || currentUser || 'Anonymous',
-      category: selectedCategory,
-      type: typeLabel,
-      createdAt: new Date().toISOString(),
-      details: detailsText,
-    };
-    setInputs((prev) => [newInput, ...prev]);
-    resetFormState();
-    setIsFormVisible(false);
-    setSelectedInputType('');
+  const handleNewEntryAdded = async (detailsText, inputTypeId) => {
+    if (!community?.id || !selectedTab?.id || !inputTypeId) {
+      setFormError('Missing required information. Please try again.');
+      return;
+    }
+
+    try {
+      const newInput = await createCommunityInput(community.id, {
+        tab_id: selectedTab.id,
+        input_type_id: inputTypeId,
+        details: detailsText
+      });
+
+      // Find the input type to get its type
+      const inputTypes = selectedTab.inputTypes || selectedTab.input_types || [];
+      const inputType = inputTypes.find(it => it.id === inputTypeId);
+      
+      // Map to component format and add to state
+      const mappedInput = {
+        id: newInput.id,
+        creator: currentUser?.username || 'Unknown',
+        creator_id: newInput.creator_id,
+        category: newInput.tab_id,
+        tab_id: newInput.tab_id,
+        input_type_id: newInput.input_type_id,
+        type: inputType?.type || inputType?.name || 'Unknown', // Use type field first
+        createdAt: newInput.created_at,
+        updatedAt: newInput.updated_at,
+        details: newInput.details
+      };
+
+      setInputs((prev) => [mappedInput, ...prev]);
+      resetFormState();
+      setIsFormVisible(false);
+      setSelectedInputType('');
+    } catch (error) {
+      setFormError(error.message || 'Failed to create input. Please try again.');
+    }
   };
 
   const handleAddFreeText = () => {
@@ -334,35 +429,55 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
       setFormError('Please enter a value before adding.');
       return;
     }
-    handleNewEntryAdded(formState.freeText.trim(), 'Free text');
+    if (!selectedInputType) {
+      setFormError('Please select an input type first.');
+      return;
+    }
+    // selectedInputType is now the ID directly
+    handleNewEntryAdded(formState.freeText.trim(), parseInt(selectedInputType));
   };
 
   const selectedTab = useMemo(() => {
-    return communityTabs.find(tab => tab.id === selectedCategory) || communityTabs[0];
+    if (!communityTabs || communityTabs.length === 0) {
+      return null;
+    }
+    // Handle both numeric and string IDs
+    const tab = communityTabs.find(tab => 
+      tab.id === selectedCategory || 
+      String(tab.id) === String(selectedCategory)
+    );
+    return tab || communityTabs[0] || null;
   }, [communityTabs, selectedCategory]);
 
   // Get available input types for the selected category
   const getAvailableInputTypes = () => {
+    if (!selectedTab) {
+      return [];
+    }
+    
     // Handle both API format (inputTypes) and frontend format
-    const inputTypes = selectedTab?.inputTypes || selectedTab?.input_types || [];
+    const inputTypes = selectedTab.inputTypes || selectedTab.input_types || [];
+    
     if (Array.isArray(inputTypes) && inputTypes.length > 0) {
-      // Use input types from community config
+      // Use input types from community config - use the actual ID as value
       return inputTypes.map(inputType => ({
-        value: inputType.type === 'free text' ? 'freeText' : 
-               inputType.type === 'dropdown list' ? 'dropdownList' : 
-               inputType.type === 'multiple select' ? 'multipleSelect' : inputType.type,
-        label: inputType.name || inputType.type,
+        value: String(inputType.id), // Use the actual ID as string for select value
+        label: inputType.type || inputType.name, // Show the type field (e.g., "free text", "dropdown list", "multiple select")
+        type: inputType.type, // Store the type for form handling
         config: inputType // Store full config for accessing items
       }));
     }
-    // Fallback to default categories
-    return categories[selectedCategory]?.inputTypes || [];
+    
+    // No fallback - if no input types, return empty array
+    return [];
   };
 
   // Get dropdown items for the selected input type
-  const getDropdownItems = (inputTypeValue) => {
+  const getDropdownItems = (inputTypeId) => {
     const availableTypes = getAvailableInputTypes();
-    const inputTypeConfig = availableTypes.find(type => type.value === inputTypeValue);
+    const inputTypeConfig = availableTypes.find(type => 
+      String(type.value) === String(inputTypeId)
+    );
     if (inputTypeConfig?.config) {
       // Handle both API format (items array with objects) and frontend format (items array with strings)
       const items = inputTypeConfig.config.items || [];
@@ -380,9 +495,11 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   };
 
   // Get multi-select options for the selected input type
-  const getMultiSelectOptions = (inputTypeValue) => {
+  const getMultiSelectOptions = (inputTypeId) => {
     const availableTypes = getAvailableInputTypes();
-    const inputTypeConfig = availableTypes.find(type => type.value === inputTypeValue);
+    const inputTypeConfig = availableTypes.find(type => 
+      String(type.value) === String(inputTypeId)
+    );
     if (inputTypeConfig?.config) {
       // Handle both API format (items array with objects) and frontend format (items array with strings)
       const items = inputTypeConfig.config.items || [];
@@ -415,16 +532,16 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
       setFormError('Please select an item before adding.');
       return;
     }
+    if (!selectedInputType) {
+      setFormError('Please select an input type first.');
+      return;
+    }
     const detailsText = explanation
       ? `${item} — ${explanation.trim()}`
       : item;
     
-    // Get the label for the current input type
-    const availableInputTypes = getAvailableInputTypes();
-    const currentInputType = availableInputTypes.find(opt => opt.value === selectedInputType);
-    const typeLabel = currentInputType?.label || 'Drop down list';
-    
-    handleNewEntryAdded(detailsText, typeLabel);
+    // selectedInputType is now the ID directly
+    handleNewEntryAdded(detailsText, parseInt(selectedInputType));
   };
 
   const handleAddMultipleSelect = () => {
@@ -433,13 +550,14 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
       setFormError('Please select at least one option before adding.');
       return;
     }
-    // Get the label for the current input type
-    const availableInputTypes = getAvailableInputTypes();
-    const currentInputType = availableInputTypes.find(opt => opt.value === selectedInputType);
-    const typeLabel = currentInputType?.label || 'Multiple select';
+    if (!selectedInputType) {
+      setFormError('Please select an input type first.');
+      return;
+    }
+    // selectedInputType is now the ID directly
     handleNewEntryAdded(
       `Selected: ${selections.join(', ')}`,
-      typeLabel,
+      parseInt(selectedInputType),
     );
   };
 
@@ -457,8 +575,14 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
 
   // Update selected category when communityTabs change
   useEffect(() => {
-    if (communityTabs.length > 0 && !communityTabs.find(tab => tab.id === selectedCategory)) {
-      setSelectedCategory(communityTabs[0].id);
+    if (communityTabs && communityTabs.length > 0) {
+      const currentTab = communityTabs.find(tab => 
+        tab.id === selectedCategory || 
+        String(tab.id) === String(selectedCategory)
+      );
+      if (!currentTab) {
+        setSelectedCategory(communityTabs[0].id);
+      }
     }
   }, [communityTabs, selectedCategory]);
 
@@ -480,12 +604,16 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     }
 
     const availableInputTypes = getAvailableInputTypes();
-    const currentInputType = availableInputTypes.find(opt => opt.value === selectedInputType);
+    const currentInputType = availableInputTypes.find(opt => 
+      String(opt.value) === String(selectedInputType)
+    );
+    
+    const inputTypeType = currentInputType?.type || currentInputType?.config?.type || '';
 
     return (
       <div className="input-form-card">
         {formError && <div className="form-error">{formError}</div>}
-        {selectedInputType === 'freeText' && (
+        {(inputTypeType === 'free text' || inputTypeType === 'freeText') && (
           <>
             <label className="form-label" htmlFor="freeTextInput">
               Input value
@@ -511,7 +639,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             </button>
           </>
         )}
-        {(selectedInputType === 'multipleSelect' || selectedInputType === 'skillsSelection') && (
+        {(inputTypeType === 'multiple select' || inputTypeType === 'multipleSelect') && (
           <>
             <fieldset className="form-fieldset">
               <legend className="form-label">Select options</legend>
@@ -535,16 +663,17 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             </button>
           </>
         )}
-        {(selectedInputType === 'dropdownList' || selectedInputType === 'itemSelection' || 
-          selectedInputType === 'quantityInput' || selectedInputType === 'amountInput' ||
-          selectedInputType === 'timeAvailability' || selectedInputType === 'fundraisingIdea' ||
-          selectedInputType === 'contactInfo' || selectedInputType === 'resourceLink') && (
+        {(inputTypeType === 'dropdown list' || inputTypeType === 'dropdownList' || 
+          inputTypeType === 'itemSelection' || inputTypeType === 'quantityInput' || 
+          inputTypeType === 'amountInput' || inputTypeType === 'timeAvailability' || 
+          inputTypeType === 'fundraisingIdea' || inputTypeType === 'contactInfo' || 
+          inputTypeType === 'resourceLink') && (
           <>
             <label className="form-label" htmlFor="dropdownItemSelect">
-              {selectedCategory === 'itemsNeeded' ? 'Item' : 
-               selectedCategory === 'moneyDonations' ? 'Donation type' :
-               selectedCategory === 'volunteering' ? 'Activity type' :
-               'Recommendation type'}
+              {selectedTab?.name?.toLowerCase().includes('item') ? 'Item' : 
+               selectedTab?.name?.toLowerCase().includes('donation') ? 'Donation type' :
+               selectedTab?.name?.toLowerCase().includes('volunteer') ? 'Activity type' :
+               'Option'}
             </label>
             <select
               id="dropdownItemSelect"
@@ -714,6 +843,117 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     }
   };
 
+  // Edit input handlers
+  const handleEditInputClick = (input) => {
+    setEditingInput(input);
+    setEditInputForm({
+      tab_id: input.tab_id,
+      input_type_id: input.input_type_id,
+      details: input.details
+    });
+    setEditInputError(null);
+    setShowEditInputDialog(true);
+  };
+
+  const handleCancelEditInput = () => {
+    setShowEditInputDialog(false);
+    setEditingInput(null);
+    setEditInputForm({ tab_id: null, input_type_id: null, details: '' });
+    setEditInputError(null);
+  };
+
+  const handleConfirmEditInput = async () => {
+    if (!editingInput || !community?.id) {
+      setEditInputError('Missing information. Please try again.');
+      return;
+    }
+
+    if (!editInputForm.details?.trim()) {
+      setEditInputError('Details cannot be empty.');
+      return;
+    }
+
+    setIsSavingInput(true);
+    setEditInputError(null);
+
+    try {
+      // Don't allow changing tab - use the original tab_id
+      const updatedInput = await updateCommunityInput(community.id, editingInput.id, {
+        tab_id: editingInput.tab_id, // Keep the original tab
+        input_type_id: editInputForm.input_type_id,
+        details: editInputForm.details.trim()
+      });
+
+      // Find the tab and input type to get type
+      const tab = communityTabs.find(t => t.id === updatedInput.tab_id);
+      const inputTypes = tab?.inputTypes || tab?.input_types || [];
+      const inputType = inputTypes.find(it => it.id === updatedInput.input_type_id);
+
+      // Update the input in state
+      const mappedInput = {
+        id: updatedInput.id,
+        creator: updatedInput.creator_username || editingInput.creator,
+        creator_id: updatedInput.creator_id,
+        category: updatedInput.tab_id,
+        tab_id: updatedInput.tab_id,
+        input_type_id: updatedInput.input_type_id,
+        type: inputType?.type || inputType?.name || editingInput.type, // Use type field first
+        createdAt: updatedInput.created_at,
+        updatedAt: updatedInput.updated_at,
+        details: updatedInput.details
+      };
+
+      setInputs((prev) => prev.map(input => 
+        input.id === editingInput.id ? mappedInput : input
+      ));
+
+      setShowEditInputDialog(false);
+      setEditingInput(null);
+      setEditInputForm({ tab_id: null, input_type_id: null, details: '' });
+    } catch (error) {
+      setEditInputError(error.message || 'Failed to update input. Please try again.');
+    } finally {
+      setIsSavingInput(false);
+    }
+  };
+
+  // Delete input handlers
+  const handleDeleteInputClick = (input) => {
+    setDeletingInputId(input.id);
+    setDeleteInputError(null);
+    setShowDeleteInputDialog(true);
+  };
+
+  const handleCancelDeleteInput = () => {
+    setShowDeleteInputDialog(false);
+    setDeletingInputId(null);
+    setDeleteInputError(null);
+  };
+
+  const handleConfirmDeleteInput = async () => {
+    if (!deletingInputId || !community?.id) {
+      setDeleteInputError('Missing information. Please try again.');
+      return;
+    }
+
+    setIsDeletingInput(true);
+    setDeleteInputError(null);
+
+    try {
+      await deleteCommunityInput(community.id, deletingInputId);
+      
+      // Remove from state
+      setInputs((prev) => prev.filter(input => input.id !== deletingInputId));
+      
+      setShowDeleteInputDialog(false);
+      setDeletingInputId(null);
+    } catch (error) {
+      setDeleteInputError(error.message || 'Failed to delete input. Please try again.');
+    } finally {
+      setIsDeletingInput(false);
+    }
+  };
+
   return (
     <div className="community-details">
       <div className="community-details-wrapper">
@@ -775,14 +1015,14 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           </div>
           
           {/* Category Tabs */}
-          {communityTabs.length > 0 && (
+          {communityTabs && communityTabs.length > 0 ? (
             <>
               <div className="category-tabs-container">
                 {communityTabs.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
-                    className={`category-tab ${selectedCategory === tab.id ? 'active' : ''}`}
+                    className={`category-tab ${selectedCategory === tab.id || String(selectedCategory) === String(tab.id) ? 'active' : ''}`}
                     onClick={() => handleCategoryChange(tab.id)}
                     style={{
                       '--tab-color': tab.color || '#f97316',
@@ -800,6 +1040,10 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                 </div>
               )}
             </>
+          ) : (
+            <div className="empty-state" style={{ padding: '1rem', marginBottom: '1rem' }}>
+              <p>No tabs configured for this community.</p>
+            </div>
           )}
 
           <div className="inputs-layout">
@@ -843,27 +1087,73 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                 <div className="header-cell details">
                   <span>Details</span>
                 </div>
+                <div className="header-cell actions">
+                  <span>Actions</span>
+                </div>
               </div>
               <div className="inputs-table-body">
-                {sortedAndFilteredInputs.map((input) => (
-                  <div className="inputs-table-row" key={input.id}>
-                    <div className="cell created-by">{input.creator}</div>
-                    <div className="cell type">{input.type}</div>
-                    <div className="cell created-at">
-                      {formatDate(input.createdAt)}
-                    </div>
-                    <div className="cell details">
-                      <button
-                        type="button"
-                        className="details-link"
-                        onClick={() => setDetailsItem(input)}
-                      >
-                        See details
-                      </button>
-                    </div>
+                {isLoadingInputs && (
+                  <div className="empty-state">
+                    <p>Loading community inputs...</p>
                   </div>
-                ))}
-                {!sortedAndFilteredInputs.length && (
+                )}
+                {!isLoadingInputs && inputsError && (
+                  <div className="empty-state">
+                    <p style={{ color: '#dc2626' }}>{inputsError}</p>
+                  </div>
+                )}
+                {!isLoadingInputs && !inputsError && sortedAndFilteredInputs.map((input) => {
+                  const isInputCreator = currentUser && input.creator_id === currentUser.id;
+                  return (
+                    <div className="inputs-table-row" key={input.id}>
+                      <div className="cell created-by">{input.creator}</div>
+                      <div className="cell type">{input.type}</div>
+                      <div className="cell created-at">
+                        {formatDate(input.createdAt || input.created_at)}
+                      </div>
+                      <div className="cell details">
+                        <button
+                          type="button"
+                          className="details-link"
+                          onClick={() => setDetailsItem(input)}
+                        >
+                          See details
+                        </button>
+                      </div>
+                      <div className="cell actions">
+                        {isInputCreator && (
+                          <>
+                            <button
+                              type="button"
+                              className="edit-input-button"
+                              onClick={() => handleEditInputClick(input)}
+                              aria-label="Edit input"
+                              title="Edit this input"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className="delete-input-button"
+                              onClick={() => handleDeleteInputClick(input)}
+                              aria-label="Delete input"
+                              title="Delete this input"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {!isLoadingInputs && !inputsError && !sortedAndFilteredInputs.length && (
                   <div className="empty-state">
                     <p>No community inputs found for the selected filters.</p>
                   </div>
@@ -884,9 +1174,17 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                       setSelectedInputType(event.target.value);
                       setIsFormVisible(false);
                       setFormError('');
+                      resetFormState();
                     }}
+                    disabled={!selectedTab || getAvailableInputTypes().length === 0}
                   >
-                    <option value="">Select input type</option>
+                    <option value="">
+                      {!selectedTab 
+                        ? 'Select a tab first' 
+                        : getAvailableInputTypes().length === 0 
+                        ? 'No input types available for this tab'
+                        : 'Select input type'}
+                    </option>
                     {getAvailableInputTypes().map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
@@ -1115,6 +1413,177 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                 disabled={isUpdating || !updateForm.title.trim() || !updateForm.description.trim()}
               >
                 {isUpdating ? 'Updating...' : 'Update'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Input Dialog */}
+      {showEditInputDialog && editingInput && (
+        <div
+          className="edit-input-dialog-backdrop"
+          role="presentation"
+          onClick={handleCancelEditInput}
+        >
+          <div
+            className="edit-input-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-input-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="edit-input-dialog-header">
+              <h3 id="edit-input-dialog-title">Edit Community Input</h3>
+              <button
+                type="button"
+                className="dialog-close-button"
+                onClick={handleCancelEditInput}
+                aria-label="Close"
+                disabled={isSavingInput}
+              >
+                ×
+              </button>
+            </div>
+            <div className="edit-input-dialog-content">
+              <div className="edit-input-form-group">
+                <label htmlFor="edit-input-type" className="edit-input-form-label">
+                  Input Type
+                </label>
+                <select
+                  id="edit-input-type"
+                  className="edit-input-form-select"
+                  value={editInputForm.input_type_id || ''}
+                  onChange={(e) => {
+                    setEditInputForm({
+                      ...editInputForm,
+                      input_type_id: parseInt(e.target.value)
+                    });
+                  }}
+                  disabled={isSavingInput}
+                >
+                  {(() => {
+                    // Use the tab from the editing input (can't change tab)
+                    const currentTab = communityTabs.find(t => 
+                      t.id === editingInput.tab_id || 
+                      String(t.id) === String(editingInput.tab_id)
+                    );
+                    const inputTypes = currentTab?.inputTypes || currentTab?.input_types || [];
+                    if (inputTypes.length === 0) {
+                      return <option value="">No input types available</option>;
+                    }
+                    return inputTypes.map((inputType) => (
+                      <option key={inputType.id} value={inputType.id}>
+                        {inputType.type || inputType.name}
+                      </option>
+                    ));
+                  })()}
+                </select>
+              </div>
+              <div className="edit-input-form-group">
+                <label htmlFor="edit-input-details" className="edit-input-form-label">
+                  Details
+                </label>
+                <textarea
+                  id="edit-input-details"
+                  className="edit-input-form-textarea"
+                  value={editInputForm.details}
+                  onChange={(e) => setEditInputForm({ ...editInputForm, details: e.target.value })}
+                  placeholder="Enter details..."
+                  rows={6}
+                  disabled={isSavingInput}
+                />
+              </div>
+              {editInputError && (
+                <div className="edit-input-error-message">
+                  {editInputError}
+                </div>
+              )}
+            </div>
+            <div className="edit-input-dialog-footer">
+              <button
+                type="button"
+                className="dialog-cancel-button"
+                onClick={handleCancelEditInput}
+                disabled={isSavingInput}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="dialog-update-button"
+                onClick={handleConfirmEditInput}
+                disabled={isSavingInput || !editInputForm.details?.trim()}
+              >
+                {isSavingInput ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Input Confirmation Dialog */}
+      {showDeleteInputDialog && deletingInputId && (
+        <div
+          className="delete-input-dialog-backdrop"
+          role="presentation"
+          onClick={handleCancelDeleteInput}
+        >
+          <div
+            className="delete-input-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-input-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="delete-input-dialog-header">
+              <h3 id="delete-input-dialog-title">Delete Community Input</h3>
+              <button
+                type="button"
+                className="dialog-close-button"
+                onClick={handleCancelDeleteInput}
+                aria-label="Close"
+                disabled={isDeletingInput}
+              >
+                ×
+              </button>
+            </div>
+            <div className="delete-input-dialog-content">
+              <p>
+                Are you sure you want to delete this community input?
+              </p>
+              <p style={{ color: '#dc2626', marginTop: '0.5rem' }}>
+                This action cannot be undone.
+              </p>
+              {deleteInputError && (
+                <div className="delete-input-error-message" style={{
+                  marginTop: '1rem',
+                  padding: '0.75rem',
+                  backgroundColor: '#fee',
+                  color: '#c33',
+                  borderRadius: '4px',
+                  border: '1px solid #fcc'
+                }}>
+                  {deleteInputError}
+                </div>
+              )}
+            </div>
+            <div className="delete-input-dialog-footer">
+              <button
+                type="button"
+                className="dialog-cancel-button"
+                onClick={handleCancelDeleteInput}
+                disabled={isDeletingInput}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="dialog-delete-button"
+                onClick={handleConfirmDeleteInput}
+                disabled={isDeletingInput}
+              >
+                {isDeletingInput ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>
