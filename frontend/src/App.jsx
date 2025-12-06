@@ -38,15 +38,8 @@ function App() {
             setUserProfile(userData);
             setIsLoggedIn(true);
             
-            // Navigate to appropriate view based on URL
-            const path = window.location.pathname;
-            if (path === '/' || path === '/main') {
-              setCurrentView('main');
-              window.history.replaceState({ view: 'main' }, '', '/main');
-            } else {
-              // Let the route handler decide
-              setCurrentView('main'); // Default to main if logged in
-            }
+            // Don't set view here - let the routing useEffect handle it based on URL
+            // This ensures the correct view is set when refreshing on any page
           } else {
             // Invalid token - clear it and navigate to login
             console.log('No valid session found - navigating to login');
@@ -107,30 +100,28 @@ function App() {
         const id = parseInt(idStr, 10)
         // Set view first, then fetch data
         setCurrentView('communityDetails')
-        // Try to fetch community data if we don't have it or it's a different ID
-        if (!selectedCommunity || selectedCommunity.id !== id) {
-          // Fetch community from API
-          const fetchCommunity = async () => {
-            try {
-              const community = await getCommunityById(id);
-              const mappedCommunity = {
-                id: community.id,
-                title: community.title,
-                description: community.description,
-                creator: community.creator_name,
-                creator_id: community.creator_id,
-                createdAt: community.created_at,
-                updatedAt: community.updated_at,
-              };
-              setSelectedCommunity(mappedCommunity);
-            } catch (err) {
-              console.error('Error fetching community:', err);
-              // Fallback to placeholder
-              setSelectedCommunity({ id, title: `Community ${id}`, description: 'No description provided.' });
-            }
-          };
-          fetchCommunity();
-        }
+        // Always fetch community from API to ensure we have the latest data with tabs
+        const fetchCommunity = async () => {
+          try {
+            const community = await getCommunityById(id);
+            const mappedCommunity = {
+              id: community.id,
+              title: community.title,
+              description: community.description,
+              creator: community.creator_name,
+              creator_id: community.creator_id,
+              createdAt: community.created_at,
+              updatedAt: community.updated_at,
+              tabs: community.tabs || [],
+            };
+            setSelectedCommunity(mappedCommunity);
+          } catch (err) {
+            console.error('Error fetching community:', err);
+            // Fallback to placeholder
+            setSelectedCommunity({ id, title: `Community ${id}`, description: 'No description provided.', tabs: [] });
+          }
+        };
+        fetchCommunity();
         return
       }
       if (path.startsWith('/register')) {
@@ -222,9 +213,35 @@ function App() {
   }
 
   const handleOpenCommunity = (community) => {
-    setSelectedCommunity(community)
-    setCurrentView('communityDetails')
-    window.history.pushState({ view: 'communityDetails', id: community?.id }, '', `/community/${community?.id || ''}`)
+    // Always fetch full community details from API when opening
+    const fetchFullCommunity = async () => {
+      if (community?.id) {
+        try {
+          const fullCommunity = await getCommunityById(community.id);
+          const mappedCommunity = {
+            id: fullCommunity.id,
+            title: fullCommunity.title,
+            description: fullCommunity.description,
+            creator: fullCommunity.creator_name,
+            creator_id: fullCommunity.creator_id,
+            createdAt: fullCommunity.created_at,
+            updatedAt: fullCommunity.updated_at,
+            tabs: fullCommunity.tabs || [],
+          };
+          setSelectedCommunity(mappedCommunity);
+        } catch (err) {
+          console.error('Error fetching community:', err);
+          // Fallback to the community data we have
+          setSelectedCommunity(community);
+        }
+      } else {
+        setSelectedCommunity(community);
+      }
+    };
+    
+    setCurrentView('communityDetails');
+    window.history.pushState({ view: 'communityDetails', id: community?.id }, '', `/community/${community?.id || ''}`);
+    fetchFullCommunity();
   }
 
   const handleCreateCommunity = () => {
@@ -324,8 +341,13 @@ function App() {
   };
 
   const handleCommunityUpdated = (updatedCommunity) => {
+    // Preserve tabs if they exist in the current community
+    const communityWithTabs = {
+      ...updatedCommunity,
+      tabs: updatedCommunity.tabs || selectedCommunity?.tabs || [],
+    };
     // Update the selected community with new values
-    setSelectedCommunity(updatedCommunity);
+    setSelectedCommunity(communityWithTabs);
     
     // Show success message
     setSuccessMessage(`Community "${updatedCommunity.title}" has been updated successfully.`);

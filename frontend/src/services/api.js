@@ -593,6 +593,125 @@ export const updateCommunity = async (communityId, communityData) => {
  * @param {number} communityId - Community ID
  * @returns {Promise<Object>} Success message
  */
+export const getCommunityInputs = async (communityId, tabId = null) => {
+  try {
+    const token = getToken();
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    let url = `${API_BASE_URL}/communities/${communityId}/inputs`;
+    if (tabId !== null) {
+      url += `?tab_id=${tabId}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch community inputs');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get community inputs error:', error);
+    throw error;
+  }
+};
+
+export const updateCommunityInput = async (communityId, inputId, inputData) => {
+  try {
+    const token = getToken();
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/communities/${communityId}/inputs/${inputId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(inputData),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to update community input');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Update community input error:', error);
+    throw error;
+  }
+};
+
+export const submitCommunityInput = async (communityId, inputData) => {
+  try {
+    const token = getToken();
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/communities/${communityId}/inputs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(inputData),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to submit community input');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Submit community input error:', error);
+    throw error;
+  }
+};
+
+export const deleteCommunityInput = async (communityId, inputId) => {
+  try {
+    const token = getToken();
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/communities/${communityId}/inputs/${inputId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to delete community input');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Delete community input error:', error);
+    throw error;
+  }
+};
+
 export const deleteCommunity = async (communityId) => {
   try {
     const token = getToken();

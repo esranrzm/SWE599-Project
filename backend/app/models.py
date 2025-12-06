@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Date, Boolean, DateTime, ForeignKey, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -61,6 +61,7 @@ class CommunityTab(Base):
     name = Column(String(200), nullable=False)
     color = Column(String(7), nullable=False)  # Hex color code
     description = Column(Text, nullable=True)
+    tab_form_structure = Column(JSON, nullable=True)
     display_order = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -76,9 +77,11 @@ class InputType(Base):
     __tablename__ = "input_types"
 
     id = Column(Integer, primary_key=True, index=True)
+    community_id = Column(Integer, ForeignKey("communities.id", ondelete="CASCADE"), nullable=False, index=True)
     tab_id = Column(Integer, ForeignKey("community_tabs.id", ondelete="CASCADE"), nullable=False, index=True)
     type = Column(String(50), nullable=False)  # 'free text', 'dropdown list', 'multiple select'
     name = Column(String(200), nullable=False)
+    creator_name = Column(String(200), nullable=True)  # Name of the user who created this input
     display_order = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -98,6 +101,7 @@ class InputTypeItem(Base):
     value = Column(String(500), nullable=False)
     display_order = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
     input_type = relationship("InputType", back_populates="items")

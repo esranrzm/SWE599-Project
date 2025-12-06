@@ -13,26 +13,20 @@ const CreateCommunity = ({ onCommunityCreated }) => {
   const [newTabDescription, setNewTabDescription] = useState('');
   const [showTabForm, setShowTabForm] = useState(false);
   
-  // Selected tab for input configuration
-  const [selectedTabId, setSelectedTabId] = useState(null);
   // Track which tabs are expanded
   const [expandedTabs, setExpandedTabs] = useState(new Set());
   
-  // Input configuration state (for selected tab)
-  const [editingInputId, setEditingInputId] = useState(null);
-  const [currentInputType, setCurrentInputType] = useState('');
-  const [currentInputName, setCurrentInputName] = useState('');
-  const [currentInputValue, setCurrentInputValue] = useState('');
-  const [currentItems, setCurrentItems] = useState([]);
+  // Input configuration state (per tab)
+  const [inputStates, setInputStates] = useState({});
   
   // Editing states for items
-  const [editingItemIndex, setEditingItemIndex] = useState(null);
   const [editingInputItemIndex, setEditingInputItemIndex] = useState(null);
   const [editingInputItemInputId, setEditingInputItemInputId] = useState(null);
   const [editingInputItemValue, setEditingInputItemValue] = useState('');
 
   const MAX_TITLE_LENGTH = 200;
   const MAX_DESCRIPTION_LENGTH = 500;
+  const MAX_TABS = 10;
 
   const createId = () => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -41,9 +35,45 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   };
 
+  // Initialize input state for a tab
+  const getInputState = (tabId) => {
+    if (!inputStates[tabId]) {
+      return {
+        editingInputId: null,
+        currentInputType: '',
+        currentInputName: '',
+        currentInputValue: '',
+        currentItems: []
+      };
+    }
+    return inputStates[tabId];
+  };
+
+  const updateInputState = (tabId, updates) => {
+    setInputStates(prev => {
+      const currentState = prev[tabId] || {
+        editingInputId: null,
+        currentInputType: '',
+        currentInputName: '',
+        currentInputValue: '',
+        currentItems: []
+      };
+      return {
+        ...prev,
+        [tabId]: { ...currentState, ...updates }
+      };
+    });
+  };
+
   // Tab management
   const handleAddTab = () => {
     if (!newTabName.trim()) {
+      return;
+    }
+
+    // Check tab limit
+    if (tabs.length >= MAX_TABS) {
+      setError(`Maximum ${MAX_TABS} tabs allowed per community`);
       return;
     }
 
@@ -60,7 +90,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     setNewTabColor('#f97316');
     setNewTabDescription('');
     setShowTabForm(false);
-    setSelectedTabId(newTab.id);
+    setError(null); // Clear any previous errors
     // Auto-expand the newly created tab
     setExpandedTabs(prev => new Set([...prev, newTab.id]));
   };
@@ -75,10 +105,6 @@ const CreateCommunity = ({ onCommunityCreated }) => {
       }
       return newSet;
     });
-    // Also set as selected when expanding
-    if (!expandedTabs.has(tabId)) {
-      setSelectedTabId(tabId);
-    }
   };
 
   const isTabExpanded = (tabId) => {
@@ -92,208 +118,143 @@ const CreateCommunity = ({ onCommunityCreated }) => {
       newSet.delete(tabId);
       return newSet;
     });
-    if (selectedTabId === tabId) {
-      setSelectedTabId(tabs.length > 1 ? tabs.find(t => t.id !== tabId)?.id || null : null);
+    // Clean up input state for deleted tab
+    setInputStates(prev => {
+      const newStates = { ...prev };
+      delete newStates[tabId];
+      return newStates;
+    });
+  };
+
+  // Input management (per tab)
+  const handleAddItem = (tabId) => {
+    const state = getInputState(tabId);
+    if (state.currentInputValue.trim()) {
+      const updatedItems = [...state.currentItems, state.currentInputValue.trim()];
+      updateInputState(tabId, {
+        currentItems: updatedItems,
+        currentInputValue: ''
+      });
     }
   };
 
-  const selectedTab = tabs.find(tab => tab.id === selectedTabId);
-
-  // Input management (for selected tab)
-  const handleAddItem = () => {
-    if (currentInputValue.trim()) {
-      if (editingItemIndex !== null) {
-        const updatedItems = [...currentItems];
-        updatedItems[editingItemIndex] = currentInputValue.trim();
-        setCurrentItems(updatedItems);
-        setEditingItemIndex(null);
-      } else {
-        setCurrentItems([...currentItems, currentInputValue.trim()]);
-      }
-      setCurrentInputValue('');
-    }
+  const handleDeleteItem = (tabId, index) => {
+    const state = getInputState(tabId);
+    const updatedItems = state.currentItems.filter((_, i) => i !== index);
+    updateInputState(tabId, { currentItems: updatedItems });
   };
 
-  const handleDeleteItem = (index) => {
-    setCurrentItems(currentItems.filter((_, i) => i !== index));
-    if (editingItemIndex === index) {
-      setEditingItemIndex(null);
-      setCurrentInputValue('');
-    }
+  const handleEditItem = (tabId, index) => {
+    const state = getInputState(tabId);
+    setEditingInputItemInputId(tabId);
+    setEditingInputItemIndex(index);
+    setEditingInputItemValue(state.currentItems[index]);
   };
 
-  const handleEditItem = (index) => {
-    setEditingItemIndex(index);
-    setCurrentInputValue(currentItems[index]);
-  };
-
-  const handleCancelEditItem = () => {
-    setEditingItemIndex(null);
-    setCurrentInputValue('');
-  };
-
-  const handleEditInputItem = (inputId, itemIndex) => {
-    if (!selectedTab) return;
-    const input = selectedTab.inputTypes.find(i => i.id === inputId);
-    if (input && input.items[itemIndex]) {
-      setEditingInputItemInputId(inputId);
-      setEditingInputItemIndex(itemIndex);
-      setEditingInputItemValue(input.items[itemIndex]);
-    }
-  };
-
-  const handleSaveInputItem = (inputId, itemIndex) => {
-    if (!selectedTab) return;
+  const handleSaveItem = (tabId, index) => {
     if (editingInputItemValue.trim()) {
-      setTabs(tabs.map(tab => {
-        if (tab.id === selectedTabId) {
-          return {
-            ...tab,
-            inputTypes: tab.inputTypes.map(input => {
-              if (input.id === inputId) {
-                const updatedItems = [...input.items];
-                updatedItems[itemIndex] = editingInputItemValue.trim();
-                return { ...input, items: updatedItems };
-              }
-              return input;
-            })
-          };
-        }
-        return tab;
-      }));
+      const state = getInputState(tabId);
+      const updatedItems = [...state.currentItems];
+      updatedItems[index] = editingInputItemValue.trim();
+      updateInputState(tabId, { currentItems: updatedItems });
       setEditingInputItemInputId(null);
       setEditingInputItemIndex(null);
       setEditingInputItemValue('');
     }
   };
 
-  const handleDeleteInputItem = (inputId, itemIndex) => {
-    if (!selectedTab) return;
-    setTabs(tabs.map(tab => {
-      if (tab.id === selectedTabId) {
-        return {
-          ...tab,
-          inputTypes: tab.inputTypes.map(input => {
-            if (input.id === inputId) {
-              return { ...input, items: input.items.filter((_, i) => i !== itemIndex) };
-            }
-            return input;
-          })
-        };
-      }
-      return tab;
-    }));
-    if (editingInputItemInputId === inputId && editingInputItemIndex === itemIndex) {
-      setEditingInputItemInputId(null);
-      setEditingInputItemIndex(null);
-      setEditingInputItemValue('');
-    }
-  };
-
-  const handleAddInput = () => {
-    if (!selectedTab || !currentInputType || !currentInputName.trim()) {
+  const handleAddInput = (tabId) => {
+    const state = getInputState(tabId);
+    if (!state.currentInputType || !state.currentInputName.trim()) {
       return;
     }
 
-    if (currentInputType === 'free text') {
+    if (state.currentInputType === 'free text') {
       const newInput = {
         id: createId(),
-        type: currentInputType,
-        name: currentInputName.trim(),
+        type: state.currentInputType,
+        name: state.currentInputName.trim(),
         items: []
       };
 
-      if (editingInputId) {
+      if (state.editingInputId) {
         setTabs(tabs.map(tab => {
-          if (tab.id === selectedTabId) {
+          if (tab.id === tabId) {
             return {
               ...tab,
               inputTypes: tab.inputTypes.map(input =>
-                input.id === editingInputId
-                  ? { ...input, type: currentInputType, name: currentInputName.trim() }
+                input.id === state.editingInputId
+                  ? { ...input, type: state.currentInputType, name: state.currentInputName.trim() }
                   : input
               )
             };
           }
           return tab;
         }));
-        setEditingInputId(null);
       } else {
         setTabs(tabs.map(tab => {
-          if (tab.id === selectedTabId) {
+          if (tab.id === tabId) {
             return { ...tab, inputTypes: [...tab.inputTypes, newInput] };
           }
           return tab;
         }));
       }
-      resetCurrentInput();
-    } else if (currentInputType === 'dropdown list' || currentInputType === 'multiple select') {
-      if (currentItems.length === 0) {
+      resetInputState(tabId);
+    } else if (state.currentInputType === 'dropdown list' || state.currentInputType === 'multiple select') {
+      if (state.currentItems.length === 0) {
         return;
       }
       const newInput = {
         id: createId(),
-        type: currentInputType,
-        name: currentInputName.trim(),
-        items: [...currentItems]
+        type: state.currentInputType,
+        name: state.currentInputName.trim(),
+        items: [...state.currentItems]
       };
 
-      if (editingInputId) {
+      if (state.editingInputId) {
         setTabs(tabs.map(tab => {
-          if (tab.id === selectedTabId) {
+          if (tab.id === tabId) {
             return {
               ...tab,
               inputTypes: tab.inputTypes.map(input =>
-                input.id === editingInputId
-                  ? { ...input, type: currentInputType, name: currentInputName.trim(), items: [...currentItems] }
+                input.id === state.editingInputId
+                  ? { ...input, type: state.currentInputType, name: state.currentInputName.trim(), items: [...state.currentItems] }
                   : input
               )
             };
           }
           return tab;
         }));
-        setEditingInputId(null);
       } else {
         setTabs(tabs.map(tab => {
-          if (tab.id === selectedTabId) {
+          if (tab.id === tabId) {
             return { ...tab, inputTypes: [...tab.inputTypes, newInput] };
           }
           return tab;
         }));
       }
-      resetCurrentInput();
+      resetInputState(tabId);
     }
   };
 
-  const handleEditCommunityInput = (inputId) => {
-    if (!selectedTab) return;
-    const input = selectedTab.inputTypes.find(i => i.id === inputId);
+  const handleEditInput = (tabId, inputId) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    const input = tab.inputTypes.find(i => i.id === inputId);
     if (input) {
-      setEditingInputId(inputId);
-      setCurrentInputType(input.type);
-      setCurrentInputName(input.name);
-      setCurrentItems([...input.items]);
-      setCurrentInputValue('');
+      updateInputState(tabId, {
+        editingInputId: inputId,
+        currentInputType: input.type,
+        currentInputName: input.name,
+        currentItems: [...input.items],
+        currentInputValue: ''
+      });
     }
   };
 
-  const handleCancelEdit = () => {
-    resetCurrentInput();
-    setEditingInputId(null);
-  };
-
-  const resetCurrentInput = () => {
-    setCurrentInputType('');
-    setCurrentInputName('');
-    setCurrentInputValue('');
-    setCurrentItems([]);
-    setEditingItemIndex(null);
-  };
-
-  const handleDeleteCommunityInput = (inputId) => {
-    if (!selectedTab) return;
+  const handleDeleteInput = (tabId, inputId) => {
     setTabs(tabs.map(tab => {
-      if (tab.id === selectedTabId) {
+      if (tab.id === tabId) {
         return {
           ...tab,
           inputTypes: tab.inputTypes.filter(input => input.id !== inputId)
@@ -301,24 +262,40 @@ const CreateCommunity = ({ onCommunityCreated }) => {
       }
       return tab;
     }));
-    if (editingInputId === inputId) {
-      resetCurrentInput();
-      setEditingInputId(null);
+    const state = getInputState(tabId);
+    if (state.editingInputId === inputId) {
+      resetInputState(tabId);
     }
   };
 
-  const isAddInputDisabled = () => {
-    if (!currentInputType || !currentInputName.trim()) {
+  const resetInputState = (tabId) => {
+    updateInputState(tabId, {
+      editingInputId: null,
+      currentInputType: '',
+      currentInputName: '',
+      currentInputValue: '',
+      currentItems: []
+    });
+  };
+
+  const handleInputTypeChange = (tabId, value) => {
+    const state = getInputState(tabId);
+    updateInputState(tabId, {
+      currentInputType: value,
+      currentItems: value === 'free text' ? [] : state.currentItems,
+      currentInputValue: ''
+    });
+  };
+
+  const isAddInputDisabled = (tabId) => {
+    const state = getInputState(tabId);
+    if (!state.currentInputType || !state.currentInputName.trim()) {
       return true;
     }
-    if (currentInputType === 'dropdown list' || currentInputType === 'multiple select') {
-      return currentItems.length === 0;
+    if (state.currentInputType === 'dropdown list' || state.currentInputType === 'multiple select') {
+      return state.currentItems.length === 0;
     }
     return false;
-  };
-
-  const getAddInputButtonText = () => {
-    return editingInputId ? 'Update Input' : 'Add Input';
   };
 
   const [isCreating, setIsCreating] = useState(false);
@@ -360,11 +337,6 @@ const CreateCommunity = ({ onCommunityCreated }) => {
         description: description.trim(),
         tabs: tabsData
       };
-      
-      // Log tabs for now (will be saved to database later)
-      if (tabs.length > 0) {
-        console.log('Tabs configuration (will be saved to separate table later):', tabs);
-      }
 
       const response = await createCommunity(communityData);
       
@@ -384,8 +356,8 @@ const CreateCommunity = ({ onCommunityCreated }) => {
       setTitle('');
       setDescription('');
       setTabs([]);
-      setSelectedTabId(null);
       setExpandedTabs(new Set());
+      setInputStates({});
       
       setTimeout(() => {
         if (onCommunityCreated) {
@@ -402,8 +374,16 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     }
   };
 
-  const showInputValueField = () => {
-    return currentInputType === 'dropdown list' || currentInputType === 'multiple select';
+  const showInputValueField = (tabId) => {
+    const state = getInputState(tabId);
+    return state.currentInputType === 'dropdown list' || state.currentInputType === 'multiple select';
+  };
+
+  const getInputTypeDisplayName = (type) => {
+    if (type === 'dropdown list') return 'Dropdown';
+    if (type === 'multiple select') return 'Multi-Select';
+    if (type === 'free text') return 'Free Text';
+    return type;
   };
 
   return (
@@ -463,18 +443,17 @@ const CreateCommunity = ({ onCommunityCreated }) => {
             <div className="tabs-container">
               {tabs.map((tab) => {
                 const isExpanded = isTabExpanded(tab.id);
+                const inputState = getInputState(tab.id);
                 return (
                   <div key={tab.id} className={`tab-card ${isExpanded ? 'expanded' : 'collapsed'}`}>
                     <div className="tab-header">
                       <button
                         type="button"
-                        className={`tab-button ${selectedTabId === tab.id ? 'active' : ''}`}
+                        className="tab-button"
                         onClick={() => toggleTabExpansion(tab.id)}
                         style={{
-                          '--tab-color': tab.color,
-                          backgroundColor: selectedTabId === tab.id ? tab.color : '#ffffff',
-                          color: selectedTabId === tab.id ? '#ffffff' : '#334155',
-                          borderColor: tab.color,
+                          backgroundColor: tab.color,
+                          color: '#ffffff',
                         }}
                       >
                         <span className="tab-button-content">
@@ -486,7 +465,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                       </button>
                       <div className="tab-header-actions">
                         <span className="tab-input-count">
-                          {tab.inputTypes.length} input type{tab.inputTypes.length !== 1 ? 's' : ''}
+                          {tab.inputTypes.length} input{tab.inputTypes.length !== 1 ? 's' : ''}
                         </span>
                         <button
                           type="button"
@@ -506,238 +485,194 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                         {tab.description && (
                           <p className="tab-description">{tab.description}</p>
                         )}
-                        {selectedTabId === tab.id && (
-                    <div className="tab-input-types">
-                      <h3 className="input-types-title">Input Types for "{tab.name}"</h3>
-                      {tab.inputTypes.length > 0 && (
-                        <div className="added-inputs-container">
-                          {tab.inputTypes.map((input) => (
-                            <div key={input.id} className="added-input-card">
-                              <div className="added-input-header">
-                                <span className="added-input-name">{input.name}</span>
-                                <span className="added-input-type">({input.type})</span>
-                                <div className="added-input-actions">
-                                  <button
-                                    className="edit-input-btn"
-                                    onClick={() => handleEditCommunityInput(input.id)}
-                                    disabled={editingInputId === input.id}
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    className="delete-input-btn"
-                                    onClick={() => handleDeleteCommunityInput(input.id)}
-                                  >
-                                    ×
-                                  </button>
+                        
+                        {/* Display existing inputs */}
+                        {tab.inputTypes.length > 0 && (
+                          <div className="added-inputs-container">
+                            {tab.inputTypes.map((input) => (
+                              <div key={input.id} className="added-input-card">
+                                <div className="added-input-header">
+                                  <span className="added-input-name">{input.name}</span>
+                                  <span className="added-input-type">({getInputTypeDisplayName(input.type)})</span>
+                                  <div className="added-input-actions">
+                                    <button
+                                      className="edit-input-btn"
+                                      onClick={() => handleEditInput(tab.id, input.id)}
+                                      disabled={inputState.editingInputId === input.id}
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      className="delete-input-btn"
+                                      onClick={() => handleDeleteInput(tab.id, input.id)}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
                                 </div>
+                                {input.items.length > 0 && (
+                                  <div className="added-input-items">
+                                    {input.items.map((item, idx) => (
+                                      <span key={idx} className="added-item-tag">{item}</span>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
-                              {input.items.length > 0 && (
-                                <div className="added-input-items">
-                                  {input.items.map((item, idx) => (
-                                    <div key={idx} className="added-item-wrapper">
-                                      {editingInputItemInputId === input.id && editingInputItemIndex === idx ? (
-                                        <div className="edit-item-input-wrapper">
-                                          <input
-                                            type="text"
-                                            className="edit-item-input"
-                                            value={editingInputItemValue}
-                                            onChange={(e) => setEditingInputItemValue(e.target.value)}
-                                            onKeyPress={(e) => {
-                                              if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                handleSaveInputItem(input.id, idx);
-                                              }
-                                            }}
-                                          />
-                                          <button
-                                            className="save-item-btn"
-                                            onClick={() => handleSaveInputItem(input.id, idx)}
-                                          >
-                                            ✓
-                                          </button>
-                                          <button
-                                            className="cancel-item-btn"
-                                            onClick={() => {
-                                              setEditingInputItemInputId(null);
-                                              setEditingInputItemIndex(null);
-                                              setEditingInputItemValue('');
-                                            }}
-                                          >
-                                            ×
-                                          </button>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <span className="added-item-tag">Ex: {item}</span>
-                                          <div className="item-actions">
-                                            <button
-                                              className="edit-item-btn"
-                                              onClick={() => handleEditInputItem(input.id, idx)}
-                                            >
-                                              Edit
-                                            </button>
-                                            <button
-                                              className="delete-item-btn-small"
-                                              onClick={() => handleDeleteInputItem(input.id, idx)}
-                                            >
-                                              ×
-                                            </button>
-                                          </div>
-                                        </>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Add Form for Tab */}
+                        <div className="tab-form-section">
+                          <h3 className="tab-form-title">Add Form for "{tab.name}" tab</h3>
+                          
+                          {/* Input Title and Input Type side by side */}
+                          <div className="input-form-row-single">
+                            <div className="input-field-group">
+                              <label className="input-label">Input Title</label>
+                              <input
+                                type="text"
+                                className="form-input"
+                                value={inputState.currentInputName}
+                                onChange={(e) => updateInputState(tab.id, { currentInputName: e.target.value })}
+                                placeholder="Enter input title"
+                              />
                             </div>
-                          ))}
-                        </div>
-                      )}
+                            <div className="input-field-group">
+                              <label className="input-label">Input Type</label>
+                              <select
+                                className="form-select"
+                                value={inputState.currentInputType}
+                                onChange={(e) => handleInputTypeChange(tab.id, e.target.value)}
+                              >
+                                <option value="">Select input type</option>
+                                <option value="free text">Free Text</option>
+                                <option value="dropdown list">Dropdown</option>
+                                <option value="multiple select">Multi-Select</option>
+                              </select>
+                            </div>
+                          </div>
 
-                      {/* Input form for selected tab */}
-                      <div className="input-form">
-                        <div className="input-form-layout">
-                          <div className="input-form-left">
-                            <div className="input-form-row">
-                              <div className="input-field-group">
-                                <label className="input-label">Input type</label>
-                                <select
-                                  className="form-select"
-                                  value={currentInputType}
-                                  onChange={(e) => setCurrentInputType(e.target.value)}
-                                >
-                                  <option value="">Select input type</option>
-                                  <option value="dropdown list">Dropdown list</option>
-                                  <option value="free text">Free text</option>
-                                  <option value="multiple select">Multiple select</option>
-                                </select>
-                              </div>
-
-                              {showInputValueField() && (
-                                <>
+                          {/* Nested card for dropdown/multi-select */}
+                          {showInputValueField(tab.id) && (
+                            <div className="nested-input-card">
+                              <h4 className="nested-card-title">
+                                Add input field for input "{inputState.currentInputName || '[input title]'}"
+                              </h4>
+                              <div className="nested-card-content">
+                                <div className="nested-input-row">
                                   <div className="input-field-group">
                                     <label className="input-label">Input value</label>
                                     <input
                                       type="text"
                                       className="form-input"
-                                      value={currentInputValue}
-                                      onChange={(e) => setCurrentInputValue(e.target.value)}
+                                      value={inputState.currentInputValue}
+                                      onChange={(e) => updateInputState(tab.id, { currentInputValue: e.target.value })}
                                       onKeyPress={(e) => {
                                         if (e.key === 'Enter') {
                                           e.preventDefault();
-                                          handleAddItem();
+                                          handleAddItem(tab.id);
                                         }
                                       }}
+                                      placeholder="Enter field value"
                                     />
                                   </div>
                                   <div className="add-item-button-wrapper">
                                     <button
                                       className="btn-add-item"
-                                      onClick={handleAddItem}
-                                      disabled={!currentInputValue.trim()}
+                                      onClick={() => handleAddItem(tab.id)}
+                                      disabled={!inputState.currentInputValue.trim()}
                                     >
                                       Add Item
                                     </button>
                                   </div>
-                                </>
-                              )}
-                            </div>
-
-                            <div className="input-form-row">
-                              <div className="input-field-group">
-                                <label className="input-label">Input name</label>
-                                <input
-                                  type="text"
-                                  className="form-input"
-                                  value={currentInputName}
-                                  onChange={(e) => setCurrentInputName(e.target.value)}
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          {showInputValueField() && currentItems.length > 0 && (
-                            <div className="items-container">
-                              <div className="items-count">
-                                Current list item count : {currentItems.length}
-                              </div>
-                              <div className="items-box">
-                                {currentItems.map((item, index) => (
-                                  <div key={index} className="item-card">
-                                    {editingItemIndex === index ? (
-                                      <div className="edit-item-input-wrapper">
-                                        <input
-                                          type="text"
-                                          className="edit-item-input"
-                                          value={currentInputValue}
-                                          onChange={(e) => setCurrentInputValue(e.target.value)}
-                                          onKeyPress={(e) => {
-                                            if (e.key === 'Enter') {
-                                              e.preventDefault();
-                                              handleAddItem();
-                                            }
-                                          }}
-                                        />
-                                        <button
-                                          className="save-item-btn"
-                                          onClick={handleAddItem}
-                                        >
-                                          ✓
-                                        </button>
-                                        <button
-                                          className="cancel-item-btn"
-                                          onClick={handleCancelEditItem}
-                                        >
-                                          ×
-                                        </button>
+                                  {inputState.currentItems.length > 0 && (
+                                    <div className="items-list-container">
+                                      <div className="items-count">
+                                        Current list item count: {inputState.currentItems.length}
                                       </div>
-                                    ) : (
-                                      <>
-                                        <span>Ex: {item}</span>
-                                        <div className="item-actions">
-                                          <button
-                                            className="edit-item-btn"
-                                            onClick={() => handleEditItem(index)}
-                                          >
-                                            Edit
-                                          </button>
-                                          <button
-                                            className="delete-item-btn"
-                                            onClick={() => handleDeleteItem(index)}
-                                          >
-                                            ×
-                                          </button>
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                ))}
+                                      <div className="items-box">
+                                        {inputState.currentItems.map((item, index) => (
+                                          <div key={index} className="item-card">
+                                            {editingInputItemInputId === tab.id && editingInputItemIndex === index ? (
+                                              <div className="edit-item-input-wrapper">
+                                                <input
+                                                  type="text"
+                                                  className="edit-item-input"
+                                                  value={editingInputItemValue}
+                                                  onChange={(e) => setEditingInputItemValue(e.target.value)}
+                                                  onKeyPress={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      e.preventDefault();
+                                                      handleSaveItem(tab.id, index);
+                                                    }
+                                                  }}
+                                                />
+                                                <button
+                                                  className="save-item-btn"
+                                                  onClick={() => handleSaveItem(tab.id, index)}
+                                                >
+                                                  ✓
+                                                </button>
+                                                <button
+                                                  className="cancel-item-btn"
+                                                  onClick={() => {
+                                                    setEditingInputItemInputId(null);
+                                                    setEditingInputItemIndex(null);
+                                                    setEditingInputItemValue('');
+                                                  }}
+                                                >
+                                                  ×
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <>
+                                                <span>Ex: {item}</span>
+                                                <div className="item-actions">
+                                                  <button
+                                                    className="edit-item-btn"
+                                                    onClick={() => handleEditItem(tab.id, index)}
+                                                  >
+                                                    Edit
+                                                  </button>
+                                                  <button
+                                                    className="delete-item-btn"
+                                                    onClick={() => handleDeleteItem(tab.id, index)}
+                                                  >
+                                                    ×
+                                                  </button>
+                                                </div>
+                                              </>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           )}
-                        </div>
 
-                        <div className="add-input-actions">
-                          <button
-                            className="btn-add-input"
-                            onClick={handleAddInput}
-                            disabled={isAddInputDisabled()}
-                          >
-                            {getAddInputButtonText()}
-                          </button>
-                          {editingInputId && (
+                          {/* Save Field Button */}
+                          <div className="save-field-actions">
                             <button
-                              className="btn-cancel-edit"
-                              onClick={handleCancelEdit}
+                              className="btn-save-field"
+                              onClick={() => handleAddInput(tab.id)}
+                              disabled={isAddInputDisabled(tab.id)}
                             >
-                              Cancel
+                              {inputState.editingInputId ? 'Update Field' : 'Save Field'}
                             </button>
-                          )}
+                            {inputState.editingInputId && (
+                              <button
+                                className="btn-cancel-edit"
+                                onClick={() => resetInputState(tab.id)}
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                        )}
                       </>
                     )}
                   </div>
@@ -803,37 +738,38 @@ const CreateCommunity = ({ onCommunityCreated }) => {
               </div>
             </div>
           ) : (
-            <button
-              className="btn-create-tab"
-              onClick={() => setShowTabForm(true)}
-            >
-              + Create New Tab
-            </button>
+            <div>
+              <button
+                className="btn-create-tab"
+                onClick={() => {
+                  if (tabs.length >= MAX_TABS) {
+                    setError(`Maximum ${MAX_TABS} tabs allowed per community`);
+                  } else {
+                    setError(null);
+                    setShowTabForm(true);
+                  }
+                }}
+                disabled={tabs.length >= MAX_TABS}
+              >
+                + Create New Tab
+              </button>
+              {tabs.length >= MAX_TABS && (
+                <p className="tab-limit-message">
+                  Maximum {MAX_TABS} tabs allowed ({tabs.length}/{MAX_TABS})
+                </p>
+              )}
+            </div>
           )}
         </div>
 
         {/* Error/Success Messages */}
         {error && (
-          <div className="create-community-message error-message" style={{
-            padding: '12px',
-            marginBottom: '20px',
-            backgroundColor: '#fee',
-            color: '#c33',
-            borderRadius: '4px',
-            border: '1px solid #fcc'
-          }}>
+          <div className="create-community-message error-message">
             {error}
           </div>
         )}
         {success && (
-          <div className="create-community-message success-message" style={{
-            padding: '12px',
-            marginBottom: '20px',
-            backgroundColor: '#efe',
-            color: '#3c3',
-            borderRadius: '4px',
-            border: '1px solid #cfc'
-          }}>
+          <div className="create-community-message success-message">
             {success}
           </div>
         )}

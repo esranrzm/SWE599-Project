@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import './CommunityDetails.css';
-import { deleteCommunity, updateCommunity } from '../../services/api';
+import { deleteCommunity, updateCommunity, getCommunityById, submitCommunityInput, getCommunityInputs, updateCommunityInput, deleteCommunityInput } from '../../services/api';
 
 // Category definitions with descriptions
 const categories = {
@@ -194,42 +194,36 @@ const createId = () => {
 
 const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunityUpdated }) => {
   const communityTabs = useMemo(() => {
-    if (community?.tabs && Array.isArray(community.tabs) && community.tabs.length > 0) {
+    // Always prefer tabs from API, even if empty array
+    if (community?.tabs && Array.isArray(community.tabs)) {
+      console.log('Using tabs from API:', community.tabs);
       return community.tabs;
     }
-    if (community?.tabs_config && Array.isArray(community.tabs_config) && community.tabs_config.length > 0) {
+    if (community?.tabs_config && Array.isArray(community.tabs_config)) {
+      console.log('Using tabs_config from API:', community.tabs_config);
       return community.tabs_config;
     }
-    return Object.values(categories);
+    // Only use mock data if community exists but has no tabs property at all
+    console.log('No tabs found in community, using mock data');
+    return [];
   }, [community?.tabs, community?.tabs_config]);
 
   const [selectedCategory, setSelectedCategory] = useState(() => {
-    return communityTabs.length > 0 ? communityTabs[0].id : 'volunteering';
-  });
-  const [selectedInputType, setSelectedInputType] = useState('');
-  const [isFormVisible, setIsFormVisible] = useState(false);
-  const [inputs, setInputs] = useState(() => {
-    const provided = Array.isArray(community?.inputs) ? community.inputs : [];
-    if (provided.length) {
-      // Ensure all inputs have a category
-      return provided.map(input => ({
-        ...input,
-        category: input.category || (communityTabs.length > 0 ? communityTabs[0].id : 'volunteering'),
-      }));
+    if (communityTabs.length > 0) {
+      return communityTabs[0].id;
     }
-    return defaultInputs;
+    return null;
   });
+  const [inputs, setInputs] = useState([]);
+  const [isLoadingInputs, setIsLoadingInputs] = useState(false);
   const [typeFilter, setTypeFilter] = useState('all');
   const [sortConfig, setSortConfig] = useState({
     column: 'createdAt',
     direction: 'desc',
   });
-  const [formState, setFormState] = useState({
-    freeText: '',
-    dropdown: { item: '', explanation: '' },
-    multipleSelect: new Set(),
-  });
-  const [formError, setFormError] = useState('');
+  const [showAddInputDialog, setShowAddInputDialog] = useState(false);
+  const [dialogFormState, setDialogFormState] = useState({});
+  const [editingInput, setEditingInput] = useState(null); // Store the input being edited
   const [detailsItem, setDetailsItem] = useState(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -241,6 +235,13 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     title: '',
     description: ''
   });
+  const [isSubmittingInput, setIsSubmittingInput] = useState(false);
+  const [submitInputError, setSubmitInputError] = useState(null);
+  const [submitSuccessMessage, setSubmitSuccessMessage] = useState(null);
+  const [showDeleteInputDialog, setShowDeleteInputDialog] = useState(false);
+  const [inputToDelete, setInputToDelete] = useState(null);
+  const [isDeletingInput, setIsDeletingInput] = useState(false);
+  const [deleteInputError, setDeleteInputError] = useState(null);
 
   // Use community prop values directly - they will update when prop changes
   const title = community?.title || 'Community Title';
@@ -270,15 +271,22 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   };
 
   const sortedAndFilteredInputs = useMemo(() => {
+    if (!selectedCategory) {
+      return [];
+    }
     // First filter by category
     let filtered = inputs.filter((input) => {
-      const inputCategory = input.category || 'volunteering';
-      return inputCategory === selectedCategory;
+      const inputCategory = input.category;
+      return inputCategory === selectedCategory || 
+             String(inputCategory) === String(selectedCategory);
     });
 
-    // Then filter by type if not 'all'
+    // Then filter by type if not 'all' - check if type contains the filter
     if (typeFilter !== 'all') {
-      filtered = filtered.filter((input) => input.type === typeFilter);
+      filtered = filtered.filter((input) => {
+        // Check if the type string contains the filter (case insensitive)
+        return input.type && input.type.toLowerCase().includes(typeFilter.toLowerCase());
+      });
     }
 
     // Sort the filtered results
@@ -305,44 +313,351 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     return sorted;
   }, [inputs, sortConfig, typeFilter, selectedCategory]);
 
-  const resetFormState = () => {
-    setFormState({
-      freeText: '',
-      dropdown: { item: '', explanation: '' },
-      multipleSelect: new Set(),
-    });
-    setFormError('');
-  };
-
-  const handleNewEntryAdded = (detailsText, typeLabel) => {
-    const newInput = {
-      id: createId(),
-      creator: currentUser?.username || currentUser || 'Anonymous',
-      category: selectedCategory,
-      type: typeLabel,
-      createdAt: new Date().toISOString(),
-      details: detailsText,
-    };
-    setInputs((prev) => [newInput, ...prev]);
-    resetFormState();
-    setIsFormVisible(false);
-    setSelectedInputType('');
-  };
-
-  const handleAddFreeText = () => {
-    if (!formState.freeText.trim()) {
-      setFormError('Please enter a value before adding.');
+  // Initialize dialog form state when dialog opens
+  const initializeDialogForm = (inputToEdit = null) => {
+    if (!selectedTab) {
+      console.warn('No selected tab when trying to initialize dialog');
       return;
     }
-    handleNewEntryAdded(formState.freeText.trim(), 'Free text');
+    const tabInputs = selectedTab?.tab_form_structure?.tab_inputs || [];
+    console.log('Initializing dialog form with tab:', selectedTab);
+    console.log('Tab form structure:', selectedTab?.tab_form_structure);
+    console.log('Tab inputs:', tabInputs);
+    console.log('Editing input:', inputToEdit);
+    
+    const initialState = {};
+    
+    if (inputToEdit && inputToEdit.inputs) {
+      // Pre-fill form with existing values when editing
+      tabInputs.forEach((input) => {
+        const existingInput = inputToEdit.inputs.find(inp => inp.inputTitle === input.input_title);
+        if (existingInput) {
+          if (input.input_type === 'multiselect') {
+            // Extract values from items array
+            initialState[input.input_id] = existingInput.items?.map(item => item.value || item) || [];
+          } else if (input.input_type === 'dropdown') {
+            // Get the selected value
+            initialState[input.input_id] = existingInput.items?.[0]?.value || existingInput.value || '';
+          } else {
+            // Free text
+            initialState[input.input_id] = existingInput.value || '';
+          }
+        } else {
+          // No existing value, initialize empty
+          if (input.input_type === 'multiselect') {
+            initialState[input.input_id] = [];
+          } else {
+            initialState[input.input_id] = '';
+          }
+        }
+      });
+    } else {
+      // Initialize empty form for new input
+      tabInputs.forEach((input) => {
+        if (input.input_type === 'multiselect') {
+          initialState[input.input_id] = [];
+        } else {
+          initialState[input.input_id] = '';
+        }
+      });
+    }
+    
+    setDialogFormState(initialState);
+  };
+
+  const handleOpenDialog = () => {
+    if (!selectedTab) {
+      console.warn('Cannot open dialog: no tab selected');
+      return;
+    }
+    setEditingInput(null);
+    setSubmitInputError(null);
+    setSubmitSuccessMessage(null);
+    initializeDialogForm();
+    setShowAddInputDialog(true);
+  };
+
+  const handleEditInput = (input) => {
+    if (!selectedTab) {
+      console.warn('Cannot open dialog: no tab selected');
+      return;
+    }
+    setEditingInput(input);
+    setSubmitInputError(null);
+    setSubmitSuccessMessage(null);
+    initializeDialogForm(input);
+    setShowAddInputDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setShowAddInputDialog(false);
+    setDialogFormState({});
+    setEditingInput(null);
+    setSubmitInputError(null);
+  };
+
+  const handleAddInput = async () => {
+    if (!selectedTab || !community?.id || !currentUser) {
+      setSubmitInputError('Missing required information');
+      return;
+    }
+
+    // Validate form
+    const tabInputs = selectedTab?.tab_form_structure?.tab_inputs || [];
+    const validationErrors = [];
+
+    for (const input of tabInputs) {
+      const value = dialogFormState[input.input_id];
+      
+      if (input.input_type === 'dropdown') {
+        if (!value || value === '') {
+          validationErrors.push(`${input.input_title} requires a selection`);
+        }
+      } else if (input.input_type === 'multiselect') {
+        if (!value || !Array.isArray(value) || value.length === 0) {
+          validationErrors.push(`${input.input_title} requires at least one selection`);
+        }
+      } else if (input.input_type === 'free text' || input.input_type === 'freetext') {
+        if (!value || value.trim() === '') {
+          validationErrors.push(`${input.input_title} cannot be empty`);
+        }
+      }
+    }
+
+    if (validationErrors.length > 0) {
+      setSubmitInputError(validationErrors.join(', '));
+      return;
+    }
+
+    setSubmitInputError(null);
+    setIsSubmittingInput(true);
+
+    try {
+      // Prepare the request data
+      const tabInputsData = tabInputs.map((input) => {
+        const value = dialogFormState[input.input_id];
+        const selectedFields = [];
+
+        if (input.input_type === 'dropdown') {
+          selectedFields.push({ value: value });
+        } else if (input.input_type === 'multiselect') {
+          selectedFields.push(...value.map(v => ({ value: v })));
+        } else if (input.input_type === 'free text' || input.input_type === 'freetext') {
+          selectedFields.push({ value: value.trim() });
+        }
+
+        return {
+          input_id: input.input_id,
+          input_title: input.input_title,
+          input_type: input.input_type,
+          input_fields: input.input_fields || null,
+          selected_input_fields: selectedFields
+        };
+      });
+
+      const requestData = {
+        tab_title: selectedTab.name,
+        input_creator: currentUser.username || `${currentUser.name} ${currentUser.surname}`,
+        tab_id: selectedTab.id,
+        tab_inputs: tabInputsData,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      // Submit or update based on edit mode
+      if (editingInput) {
+        // Update existing input
+        await updateCommunityInput(community.id, editingInput.id, requestData);
+        setSubmitSuccessMessage('Input updated successfully!');
+      } else {
+        // Create new input
+        await submitCommunityInput(community.id, requestData);
+        setSubmitSuccessMessage('Input submitted successfully!');
+      }
+
+      setTimeout(() => {
+        setSubmitSuccessMessage(null);
+      }, 5000);
+
+      // Close dialog
+      handleCloseDialog();
+      
+      // Refresh inputs to show updated entry in table
+      const fetchedInputs = await getCommunityInputs(community.id, selectedTab.id);
+      
+      // Group inputs by creator and created_at (within same second = same submission)
+      const groupedInputs = {};
+      fetchedInputs.forEach(input => {
+        const createdDate = new Date(input.created_at);
+        // Round to nearest second for grouping
+        const groupKey = `${input.creator_name || 'Unknown'}_${Math.floor(createdDate.getTime() / 1000)}`;
+        
+        if (!groupedInputs[groupKey]) {
+          groupedInputs[groupKey] = {
+            id: input.id, // Use first input's ID as group ID
+            creator: input.creator_name || 'Unknown',
+            createdAt: input.created_at,
+            category: selectedCategory,
+            inputs: [] // Array to store all inputs in this submission
+          };
+        }
+        
+        // Map database type to display format
+        const typeDisplayMap = {
+          'free text': 'Free Text',
+          'dropdown list': 'Dropdown',
+          'multiple select': 'Multiple Select'
+        };
+        const displayType = typeDisplayMap[input.type] || input.type;
+        
+        groupedInputs[groupKey].inputs.push({
+          id: input.id,
+          inputType: input.type,
+          inputTitle: input.name,
+          displayType: displayType,
+          items: input.items || [],
+          value: input.items?.map(item => item.value).join(', ') || ''
+        });
+      });
+      
+      // Convert grouped object to array and format for display
+      const mappedInputs = Object.values(groupedInputs).map(group => {
+        // Combine all types into one string
+        const allTypes = group.inputs.map(inp => inp.displayType).join(', ');
+        
+        return {
+          id: group.id,
+          creator: group.creator,
+          type: allTypes, // Show all input types
+          createdAt: group.createdAt,
+          category: group.category,
+          inputs: group.inputs // Store all inputs for details modal
+        };
+      });
+      
+      setInputs(mappedInputs);
+    } catch (error) {
+      console.error('Error submitting/updating input:', error);
+      setSubmitInputError(error.message || `Failed to ${editingInput ? 'update' : 'submit'} input. Please try again.`);
+    } finally {
+      setIsSubmittingInput(false);
+    }
+  };
+
+  const handleDeleteInputClick = (input) => {
+    setInputToDelete(input);
+    setDeleteInputError(null);
+    setShowDeleteInputDialog(true);
+  };
+
+  const handleCancelDeleteInput = () => {
+    setShowDeleteInputDialog(false);
+    setInputToDelete(null);
+    setDeleteInputError(null);
+  };
+
+  const handleConfirmDeleteInput = async () => {
+    if (!inputToDelete || !community?.id) {
+      setDeleteInputError('Missing required information');
+      return;
+    }
+
+    setIsDeletingInput(true);
+    setDeleteInputError(null);
+
+    try {
+      await deleteCommunityInput(community.id, inputToDelete.id);
+
+      // Show success message
+      setSubmitSuccessMessage('Input deleted successfully!');
+      setTimeout(() => {
+        setSubmitSuccessMessage(null);
+      }, 5000);
+
+      // Close dialog
+      handleCancelDeleteInput();
+
+      // Refresh inputs to remove deleted entry from table
+      const fetchedInputs = await getCommunityInputs(community.id, selectedCategory);
+      
+      // Group inputs by creator and created_at (within same second = same submission)
+      const groupedInputs = {};
+      fetchedInputs.forEach(input => {
+        const createdDate = new Date(input.created_at);
+        // Round to nearest second for grouping
+        const groupKey = `${input.creator_name || 'Unknown'}_${Math.floor(createdDate.getTime() / 1000)}`;
+        
+        if (!groupedInputs[groupKey]) {
+          groupedInputs[groupKey] = {
+            id: input.id, // Use first input's ID as group ID
+            creator: input.creator_name || 'Unknown',
+            createdAt: input.created_at,
+            category: selectedCategory,
+            inputs: [] // Array to store all inputs in this submission
+          };
+        }
+        
+        // Map database type to display format
+        const typeDisplayMap = {
+          'free text': 'Free Text',
+          'dropdown list': 'Dropdown',
+          'multiple select': 'Multiple Select'
+        };
+        const displayType = typeDisplayMap[input.type] || input.type;
+        
+        groupedInputs[groupKey].inputs.push({
+          id: input.id,
+          inputType: input.type,
+          inputTitle: input.name,
+          displayType: displayType,
+          items: input.items || [],
+          value: input.items?.map(item => item.value).join(', ') || ''
+        });
+      });
+      
+      // Convert grouped object to array and format for display
+      const mappedInputs = Object.values(groupedInputs).map(group => {
+        // Combine all types into one string
+        const allTypes = group.inputs.map(inp => inp.displayType).join(', ');
+        
+        return {
+          id: group.id,
+          creator: group.creator,
+          type: allTypes, // Show all input types
+          createdAt: group.createdAt,
+          category: group.category,
+          inputs: group.inputs // Store all inputs for details modal
+        };
+      });
+      
+      setInputs(mappedInputs);
+    } catch (error) {
+      console.error('Error deleting input:', error);
+      setDeleteInputError(error.message || 'Failed to delete input. Please try again.');
+    } finally {
+      setIsDeletingInput(false);
+    }
   };
 
   const selectedTab = useMemo(() => {
-    return communityTabs.find(tab => tab.id === selectedCategory) || communityTabs[0];
+    if (!selectedCategory || communityTabs.length === 0) {
+      return null;
+    }
+    // Try to find tab by id (could be number or string)
+    const foundTab = communityTabs.find(tab => 
+      tab.id === selectedCategory || 
+      String(tab.id) === String(selectedCategory) ||
+      tab.name === selectedCategory
+    );
+    console.log('Selected tab:', foundTab || communityTabs[0]);
+    return foundTab || communityTabs[0];
   }, [communityTabs, selectedCategory]);
 
-  // Get available input types for the selected category
+  // Get available input types for the selected category (for filter dropdown)
   const getAvailableInputTypes = () => {
+    if (!selectedTab) {
+      return [];
+    }
     // Handle both API format (inputTypes) and frontend format
     const inputTypes = selectedTab?.inputTypes || selectedTab?.input_types || [];
     if (Array.isArray(inputTypes) && inputTypes.length > 0) {
@@ -355,266 +670,149 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         config: inputType // Store full config for accessing items
       }));
     }
-    // Fallback to default categories
-    return categories[selectedCategory]?.inputTypes || [];
-  };
-
-  // Get dropdown items for the selected input type
-  const getDropdownItems = (inputTypeValue) => {
-    const availableTypes = getAvailableInputTypes();
-    const inputTypeConfig = availableTypes.find(type => type.value === inputTypeValue);
-    if (inputTypeConfig?.config) {
-      // Handle both API format (items array with objects) and frontend format (items array with strings)
-      const items = inputTypeConfig.config.items || [];
-      if (items.length > 0) {
-        // If items are objects with 'value' property (API format), extract values
-        if (typeof items[0] === 'object' && items[0].value) {
-          return items.map(item => item.value);
-        }
-        // If items are strings (frontend format), return as is
-        return items;
-      }
-    }
-    // Fallback to default category items
-    return categoryDropdownItems[selectedCategory] || [];
-  };
-
-  // Get multi-select options for the selected input type
-  const getMultiSelectOptions = (inputTypeValue) => {
-    const availableTypes = getAvailableInputTypes();
-    const inputTypeConfig = availableTypes.find(type => type.value === inputTypeValue);
-    if (inputTypeConfig?.config) {
-      // Handle both API format (items array with objects) and frontend format (items array with strings)
-      const items = inputTypeConfig.config.items || [];
-      if (items.length > 0) {
-        // If items are objects with 'value' property (API format), extract values
-        if (typeof items[0] === 'object' && items[0].value) {
-          return items.map(item => item.value);
-        }
-        // If items are strings (frontend format), return as is
-        return items;
-      }
-    }
-    // Fallback to default category options
-    return categoryMultiSelectOptions[selectedCategory] || [];
+    // Return empty array if no input types (don't use mock data)
+    return [];
   };
 
   // Handle category change
   const handleCategoryChange = (categoryId) => {
     setSelectedCategory(categoryId);
-    setSelectedInputType('');
-    setIsFormVisible(false);
-    setFormError('');
-    resetFormState();
     setTypeFilter('all');
   };
 
-  const handleAddDropdown = () => {
-    const { item, explanation } = formState.dropdown;
-    if (!item) {
-      setFormError('Please select an item before adding.');
-      return;
-    }
-    const detailsText = explanation
-      ? `${item} — ${explanation.trim()}`
-      : item;
-    
-    // Get the label for the current input type
-    const availableInputTypes = getAvailableInputTypes();
-    const currentInputType = availableInputTypes.find(opt => opt.value === selectedInputType);
-    const typeLabel = currentInputType?.label || 'Drop down list';
-    
-    handleNewEntryAdded(detailsText, typeLabel);
-  };
-
-  const handleAddMultipleSelect = () => {
-    const selections = Array.from(formState.multipleSelect);
-    if (!selections.length) {
-      setFormError('Please select at least one option before adding.');
-      return;
-    }
-    // Get the label for the current input type
-    const availableInputTypes = getAvailableInputTypes();
-    const currentInputType = availableInputTypes.find(opt => opt.value === selectedInputType);
-    const typeLabel = currentInputType?.label || 'Multiple select';
-    handleNewEntryAdded(
-      `Selected: ${selections.join(', ')}`,
-      typeLabel,
-    );
-  };
-
-  const handleCheckboxChange = (value) => {
-    setFormState((prev) => {
-      const updated = new Set(prev.multipleSelect);
-      if (updated.has(value)) {
-        updated.delete(value);
-      } else {
-        updated.add(value);
+  // Fetch community data if missing or incomplete (missing tabs property)
+  useEffect(() => {
+    const fetchCommunityIfNeeded = async () => {
+      if (community?.id) {
+        // If community exists but doesn't have tabs property at all, fetch full data
+        // This handles the case where we only have basic info from the card list
+        if (community.tabs === undefined && community.tabs_config === undefined) {
+          console.log('Fetching full community data for ID:', community.id);
+          try {
+            const fullCommunity = await getCommunityById(community.id);
+            const mappedCommunity = {
+              id: fullCommunity.id,
+              title: fullCommunity.title,
+              description: fullCommunity.description,
+              creator: fullCommunity.creator_name,
+              creator_id: fullCommunity.creator_id,
+              createdAt: fullCommunity.created_at,
+              updatedAt: fullCommunity.updated_at,
+              tabs: fullCommunity.tabs || [],
+            };
+            // Update parent component's state via callback
+            if (onCommunityUpdated) {
+              onCommunityUpdated(mappedCommunity);
+            }
+          } catch (err) {
+            console.error('Error fetching community in CommunityDetails:', err);
+          }
+        }
       }
-      return { ...prev, multipleSelect: updated };
-    });
-  };
+    };
+    
+    fetchCommunityIfNeeded();
+  }, [community?.id, community?.tabs, onCommunityUpdated]); // Run when community ID or tabs change
+
+  // Fetch inputs when community or selected tab changes
+  useEffect(() => {
+    const fetchInputs = async () => {
+      if (!community?.id || !selectedCategory) {
+        setInputs([]);
+        return;
+      }
+
+      setIsLoadingInputs(true);
+      try {
+        const fetchedInputs = await getCommunityInputs(community.id, selectedCategory);
+        
+        // Group inputs by creator and created_at (within same second = same submission)
+        const groupedInputs = {};
+        fetchedInputs.forEach(input => {
+          const createdDate = new Date(input.created_at);
+          // Round to nearest second for grouping
+          const groupKey = `${input.creator_name || 'Unknown'}_${Math.floor(createdDate.getTime() / 1000)}`;
+          
+          if (!groupedInputs[groupKey]) {
+            groupedInputs[groupKey] = {
+              id: input.id, // Use first input's ID as group ID
+              creator: input.creator_name || 'Unknown',
+              createdAt: input.created_at,
+              category: selectedCategory,
+              inputs: [] // Array to store all inputs in this submission
+            };
+          }
+          
+          // Map database type to display format
+          const typeDisplayMap = {
+            'free text': 'Free Text',
+            'dropdown list': 'Dropdown',
+            'multiple select': 'Multiple Select'
+          };
+          const displayType = typeDisplayMap[input.type] || input.type;
+          
+          groupedInputs[groupKey].inputs.push({
+            id: input.id,
+            inputType: input.type,
+            inputTitle: input.name,
+            displayType: displayType,
+            items: input.items || [],
+            value: input.items?.map(item => item.value).join(', ') || ''
+          });
+        });
+        
+        // Convert grouped object to array and format for display
+        const mappedInputs = Object.values(groupedInputs).map(group => {
+          // Combine all types into one string
+          const allTypes = group.inputs.map(inp => inp.displayType).join(', ');
+          
+          return {
+            id: group.id,
+            creator: group.creator,
+            type: allTypes, // Show all input types
+            createdAt: group.createdAt,
+            category: group.category,
+            inputs: group.inputs // Store all inputs for details modal
+          };
+        });
+        
+        setInputs(mappedInputs);
+      } catch (error) {
+        console.error('Error fetching inputs:', error);
+        setInputs([]);
+      } finally {
+        setIsLoadingInputs(false);
+      }
+    };
+
+    fetchInputs();
+  }, [community?.id, selectedCategory]);
+
+  // Debug: Log community and tabs changes
+  useEffect(() => {
+    console.log('Community prop changed:', community);
+    console.log('Community tabs:', community?.tabs);
+    console.log('Computed communityTabs:', communityTabs);
+  }, [community, communityTabs]);
 
   // Update selected category when communityTabs change
   useEffect(() => {
-    if (communityTabs.length > 0 && !communityTabs.find(tab => tab.id === selectedCategory)) {
-      setSelectedCategory(communityTabs[0].id);
+    if (communityTabs.length > 0) {
+      // Check if current selectedCategory exists in tabs
+      const tabExists = communityTabs.find(tab => 
+        tab.id === selectedCategory || 
+        String(tab.id) === String(selectedCategory)
+      );
+      if (!tabExists) {
+        // Select first tab if current selection doesn't exist
+        console.log('Setting selectedCategory to first tab:', communityTabs[0].id);
+        setSelectedCategory(communityTabs[0].id);
+      }
+    } else if (selectedCategory !== null) {
+      // Reset to null if no tabs available
+      setSelectedCategory(null);
     }
   }, [communityTabs, selectedCategory]);
-
-  // Update input type when category changes to reset form
-  useEffect(() => {
-    setSelectedInputType('');
-    setIsFormVisible(false);
-    setFormError('');
-    resetFormState();
-  }, [selectedCategory]);
-
-  const renderInputForm = () => {
-    if (!isFormVisible || !selectedInputType) {
-      return (
-        <div className="input-placeholder-card">
-          <p>Select an input type and click on "Add New Community Input" to get started.</p>
-        </div>
-      );
-    }
-
-    const availableInputTypes = getAvailableInputTypes();
-    const currentInputType = availableInputTypes.find(opt => opt.value === selectedInputType);
-
-    return (
-      <div className="input-form-card">
-        {formError && <div className="form-error">{formError}</div>}
-        {selectedInputType === 'freeText' && (
-          <>
-            <label className="form-label" htmlFor="freeTextInput">
-              Input value
-            </label>
-            <textarea
-              id="freeTextInput"
-              className="form-textarea"
-              placeholder="Enter your contribution..."
-              value={formState.freeText}
-              onChange={(event) =>
-                setFormState((prev) => ({
-                  ...prev,
-                  freeText: event.target.value,
-                }))
-              }
-            />
-            <button
-              type="button"
-              className="primary-button"
-              onClick={handleAddFreeText}
-            >
-              Add
-            </button>
-          </>
-        )}
-        {(selectedInputType === 'multipleSelect' || selectedInputType === 'skillsSelection') && (
-          <>
-            <fieldset className="form-fieldset">
-              <legend className="form-label">Select options</legend>
-              {getMultiSelectOptions(selectedInputType).map((option) => (
-                <label key={option} className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    checked={formState.multipleSelect.has(option)}
-                    onChange={() => handleCheckboxChange(option)}
-                  />
-                  <span>{option}</span>
-                </label>
-              ))}
-            </fieldset>
-            <button
-              type="button"
-              className="primary-button"
-              onClick={handleAddMultipleSelect}
-            >
-              Add
-            </button>
-          </>
-        )}
-        {(selectedInputType === 'dropdownList' || selectedInputType === 'itemSelection' || 
-          selectedInputType === 'quantityInput' || selectedInputType === 'amountInput' ||
-          selectedInputType === 'timeAvailability' || selectedInputType === 'fundraisingIdea' ||
-          selectedInputType === 'contactInfo' || selectedInputType === 'resourceLink') && (
-          <>
-            <label className="form-label" htmlFor="dropdownItemSelect">
-              {selectedCategory === 'itemsNeeded' ? 'Item' : 
-               selectedCategory === 'moneyDonations' ? 'Donation type' :
-               selectedCategory === 'volunteering' ? 'Activity type' :
-               'Recommendation type'}
-            </label>
-            <select
-              id="dropdownItemSelect"
-              className="form-select"
-              value={formState.dropdown.item}
-              onChange={(event) =>
-                setFormState((prev) => ({
-                  ...prev,
-                  dropdown: {
-                    ...prev.dropdown,
-                    item: event.target.value,
-                  },
-                }))
-              }
-            >
-              <option value="">Select option</option>
-              {getDropdownItems(selectedInputType).map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            <label className="form-label" htmlFor="dropdownExplanation">
-              {selectedCategory === 'itemsNeeded' ? 'Details (quantity, condition, etc.)' :
-               selectedCategory === 'moneyDonations' ? 'Details (amount, frequency, etc.)' :
-               selectedCategory === 'volunteering' ? 'Details (availability, schedule, etc.)' :
-               'Details'}
-            </label>
-            <textarea
-              id="dropdownExplanation"
-              className="form-textarea"
-              placeholder={
-                selectedCategory === 'itemsNeeded' ? 'Ex: I can donate 100 student chairs' :
-                selectedCategory === 'moneyDonations' ? 'Ex: I can donate $500 monthly' :
-                selectedCategory === 'volunteering' ? 'Ex: Available weekends, 4 hours per day' :
-                'Enter details...'
-              }
-              value={formState.dropdown.explanation}
-              onChange={(event) =>
-                setFormState((prev) => ({
-                  ...prev,
-                  dropdown: {
-                    ...prev.dropdown,
-                    explanation: event.target.value,
-                  },
-                }))
-              }
-            />
-            <button
-              type="button"
-              className="primary-button"
-              onClick={handleAddDropdown}
-            >
-              Add
-            </button>
-          </>
-        )}
-      </div>
-    );
-  };
-
-  const handleAddNewClick = () => {
-    if (!selectedInputType) {
-      setFormError('Please choose an input type first.');
-      setIsFormVisible(false);
-      return;
-    }
-    setFormError('');
-    setIsFormVisible(true);
-  };
 
   const handleDeleteClick = () => {
     setShowDeleteDialog(true);
@@ -698,6 +896,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         creator_id: updatedCommunity.creator_id,
         createdAt: updatedCommunity.created_at,
         updatedAt: updatedCommunity.updated_at,
+        tabs: updatedCommunity.tabs || community?.tabs || [],
       };
 
       // Call the update callback to update the displayed values
@@ -770,27 +969,26 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         </div>
 
         <section className="inputs-section">
-          <div className="inputs-header">
-            <h2>Community Inputs</h2>
-          </div>
-          
           {/* Category Tabs */}
-          {communityTabs.length > 0 && (
+          {communityTabs.length > 0 ? (
             <>
               <div className="category-tabs-container">
-                {communityTabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    className={`category-tab ${selectedCategory === tab.id ? 'active' : ''}`}
-                    onClick={() => handleCategoryChange(tab.id)}
-                    style={{
-                      '--tab-color': tab.color || '#f97316',
-                    }}
-                  >
-                    <span className="category-tab-label">{tab.name || tab.label}</span>
-                  </button>
-                ))}
+                {communityTabs.map((tab) => {
+                  const isActive = selectedCategory === tab.id || String(selectedCategory) === String(tab.id);
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      className={`category-tab ${isActive ? 'active' : ''}`}
+                      onClick={() => handleCategoryChange(tab.id)}
+                      style={{
+                        '--tab-color': tab.color || '#f97316',
+                      }}
+                    >
+                      <span className="category-tab-label">{tab.name || tab.label}</span>
+                    </button>
+                  );
+                })}
               </div>
               
               {/* Category Description */}
@@ -800,109 +998,152 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                 </div>
               )}
             </>
+          ) : (
+            <div className="no-tabs-message">
+              <p>No tabs configured for this community.</p>
+            </div>
           )}
 
           <div className="inputs-layout">
-            <div className="inputs-table-card">
-              <div className="inputs-table-header">
-                <div className="header-cell created-by">
-                  <span>Created by</span>
+            <div className="inputs-table-wrapper">
+              <div className="inputs-table-header-actions">
+                <h2 className="inputs-table-title">Community Inputs</h2>
+                {selectedTab && (
                   <button
                     type="button"
-                    className="header-action"
-                    onClick={() => handleSort('creator')}
+                    className="add-input-button"
+                    onClick={handleOpenDialog}
                   >
-                    Sort {getSortIndicator(sortConfig.column, 'creator', sortConfig.direction)}
+                    Add Input to tab {selectedTab.name || ''}
                   </button>
-                </div>
-                <div className="header-cell type">
-                  <span>Type</span>
-                  <select
-                    className="header-select"
-                    value={typeFilter}
-                    onChange={(event) => setTypeFilter(event.target.value)}
-                  >
-                    <option value="all">All types</option>
-                    {getAvailableInputTypes().map((inputType) => (
-                      <option key={inputType.value} value={inputType.label}>
-                        {inputType.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="header-cell created-at">
-                  <span>Created at</span>
-                  <button
-                    type="button"
-                    className="header-action"
-                    onClick={() => handleSort('createdAt')}
-                  >
-                    Sort {getSortIndicator(sortConfig.column, 'createdAt', sortConfig.direction)}
-                  </button>
-                </div>
-                <div className="header-cell details">
-                  <span>Details</span>
-                </div>
-              </div>
-              <div className="inputs-table-body">
-                {sortedAndFilteredInputs.map((input) => (
-                  <div className="inputs-table-row" key={input.id}>
-                    <div className="cell created-by">{input.creator}</div>
-                    <div className="cell type">{input.type}</div>
-                    <div className="cell created-at">
-                      {formatDate(input.createdAt)}
-                    </div>
-                    <div className="cell details">
-                      <button
-                        type="button"
-                        className="details-link"
-                        onClick={() => setDetailsItem(input)}
-                      >
-                        See details
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {!sortedAndFilteredInputs.length && (
-                  <div className="empty-state">
-                    <p>No community inputs found for the selected filters.</p>
-                  </div>
                 )}
               </div>
-            </div>
-            <div className="inputs-form-wrapper">
-              <div className="input-type-selector">
-                <label htmlFor="inputTypeSelect" className="form-label">
-                  Input type
-                </label>
-                <div className="selector-row">
-                  <select
-                    id="inputTypeSelect"
-                    className="form-select"
-                    value={selectedInputType}
-                    onChange={(event) => {
-                      setSelectedInputType(event.target.value);
-                      setIsFormVisible(false);
-                      setFormError('');
-                    }}
-                  >
-                    <option value="">Select input type</option>
-                    {getAvailableInputTypes().map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="primary-button"
-                    onClick={handleAddNewClick}
-                  >
-                    Add New Community Input
-                  </button>
+              {submitSuccessMessage && (
+                <div className="success-message" style={{
+                  padding: '0.75rem 1rem',
+                  backgroundColor: '#d1fae5',
+                  color: '#065f46',
+                  borderRadius: '8px',
+                  border: '1px solid #6ee7b7',
+                  marginBottom: '1rem',
+                  fontSize: '0.9rem'
+                }}>
+                  {submitSuccessMessage}
                 </div>
+              )}
+              <div className="inputs-table-card">
+                <div className="inputs-table-header">
+                  <div className="header-cell created-by">
+                    <span>Created by</span>
+                    <button
+                      type="button"
+                      className="header-action"
+                      onClick={() => handleSort('creator')}
+                    >
+                      Sort {getSortIndicator(sortConfig.column, 'creator', sortConfig.direction)}
+                    </button>
+                  </div>
+                  <div className="header-cell type">
+                    <span>Type</span>
+                    <select
+                      className="header-select"
+                      value={typeFilter}
+                      onChange={(event) => setTypeFilter(event.target.value)}
+                    >
+                      <option value="all">All types</option>
+                      {getAvailableInputTypes().map((inputType) => (
+                        <option key={inputType.value} value={inputType.label}>
+                          {inputType.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="header-cell created-at">
+                    <span>Created at</span>
+                    <button
+                      type="button"
+                      className="header-action"
+                      onClick={() => handleSort('createdAt')}
+                    >
+                      Sort {getSortIndicator(sortConfig.column, 'createdAt', sortConfig.direction)}
+                    </button>
+                  </div>
+                  <div className="header-cell details">
+                    <span>Details</span>
+                  </div>
+                  <div className="header-cell actions">
+                    <span>Actions</span>
+                  </div>
+                </div>
+              <div className="inputs-table-body">
+                {isLoadingInputs ? (
+                  <div className="empty-state">
+                    <p>Loading inputs...</p>
+                  </div>
+                ) : (
+                  <>
+                    {sortedAndFilteredInputs.map((input) => {
+                      const isCreator = currentUser && input.creator && (
+                        input.creator === currentUser.username ||
+                        input.creator === `${currentUser.name} ${currentUser.surname}`.trim()
+                      );
+                      return (
+                        <div className="inputs-table-row" key={input.id}>
+                          <div className="cell created-by">{input.creator || 'Unknown'}</div>
+                          <div className="cell type">{input.type || 'N/A'}</div>
+                          <div className="cell created-at">
+                            {formatDate(input.createdAt)}
+                          </div>
+                          <div className="cell details">
+                            <button
+                              type="button"
+                              className="details-link"
+                              onClick={() => setDetailsItem(input)}
+                            >
+                              See details
+                            </button>
+                          </div>
+                          <div className="cell actions">
+                            {isCreator && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="action-button edit-button"
+                                  onClick={() => handleEditInput(input)}
+                                  title="Edit"
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="action-button delete-button"
+                                  onClick={() => handleDeleteInputClick(input)}
+                                  title="Delete"
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                  </svg>
+                                </button>
+                              </>
+                            )}
+                            {!isCreator && <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>-</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {!sortedAndFilteredInputs.length && !isLoadingInputs && (
+                      <div className="empty-state">
+                        <p>No community inputs found for the selected filters.</p>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
-              {renderInputForm()}
+              </div>
             </div>
           </div>
         </section>
@@ -944,10 +1185,37 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                 <dt>Created at</dt>
                 <dd>{formatDate(detailsItem.createdAt)}</dd>
               </div>
-              <div>
-                <dt>Details</dt>
-                <dd>{detailsItem.details}</dd>
-              </div>
+              {detailsItem.inputs && detailsItem.inputs.length > 0 && (
+                <div>
+                  <dt>Input Details</dt>
+                  <dd>
+                    {detailsItem.inputs.map((input, idx) => (
+                      <div key={idx} style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: idx < detailsItem.inputs.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
+                        <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#0f172a' }}>
+                          {input.inputTitle}
+                        </div>
+                        <div style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '0.25rem' }}>
+                          Type: {input.displayType}
+                        </div>
+                        {input.items && input.items.length > 0 ? (
+                          <div style={{ fontSize: '0.875rem', color: '#334155' }}>
+                            <strong>Values:</strong>
+                            <ul style={{ margin: '0.25rem 0 0 1.5rem', padding: 0 }}>
+                              {input.items.map((item, itemIdx) => (
+                                <li key={itemIdx}>{item.value || item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '0.875rem', color: '#334155' }}>
+                            <strong>Value:</strong> {input.value || 'N/A'}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </dd>
+                </div>
+              )}
             </dl>
             <div className="details-modal-footer">
               <button
@@ -1024,6 +1292,223 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                 disabled={isDeleting}
               >
                 {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Input Dialog */}
+      {showAddInputDialog && (
+        <div
+          className="add-input-dialog-backdrop"
+          role="presentation"
+          onClick={handleCloseDialog}
+        >
+          <div
+            className="add-input-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-input-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="add-input-dialog-header">
+              <h3 id="add-input-dialog-title">
+                {editingInput ? 'Edit input' : 'Fill form to add the input'}
+              </h3>
+              <button
+                type="button"
+                className="dialog-close-button"
+                onClick={handleCloseDialog}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="add-input-dialog-content">
+              {submitInputError && (
+                <div className="dialog-error-message" style={{
+                  padding: '0.75rem',
+                  backgroundColor: '#fee',
+                  color: '#c33',
+                  borderRadius: '4px',
+                  border: '1px solid #fcc',
+                  marginBottom: '1rem'
+                }}>
+                  {submitInputError}
+                </div>
+              )}
+              {selectedTab?.tab_form_structure && selectedTab.tab_form_structure.tab_inputs && selectedTab.tab_form_structure.tab_inputs.length > 0 ? (
+                selectedTab.tab_form_structure.tab_inputs.map((input) => (
+                <div key={input.input_id} className="dialog-input-group">
+                  <label className="dialog-input-label">
+                    {input.input_title}
+                    {(input.input_type === 'freetext' || input.input_type === 'free text') && (
+                      <span className="char-count-indicator">
+                        ({dialogFormState[input.input_id]?.length || 0} / 200)
+                      </span>
+                    )}
+                  </label>
+                  
+                  {input.input_type === 'dropdown' && (
+                    <select
+                      className="dialog-form-select"
+                      value={dialogFormState[input.input_id] || ''}
+                      onChange={(e) =>
+                        setDialogFormState((prev) => ({
+                          ...prev,
+                          [input.input_id]: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Select option</option>
+                      {input.input_fields?.map((field, idx) => (
+                        <option key={idx} value={field.value}>
+                          {field.value}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {input.input_type === 'multiselect' && (
+                    <div className="dialog-multiselect-container">
+                      {input.input_fields?.map((field, idx) => (
+                        <label key={idx} className="dialog-checkbox-option">
+                          <input
+                            type="checkbox"
+                            checked={(dialogFormState[input.input_id] || []).includes(field.value)}
+                            onChange={(e) => {
+                              const currentValues = dialogFormState[input.input_id] || [];
+                              if (e.target.checked) {
+                                setDialogFormState((prev) => ({
+                                  ...prev,
+                                  [input.input_id]: [...currentValues, field.value],
+                                }));
+                              } else {
+                                setDialogFormState((prev) => ({
+                                  ...prev,
+                                  [input.input_id]: currentValues.filter(v => v !== field.value),
+                                }));
+                              }
+                            }}
+                          />
+                          <span>{field.value}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                  {(input.input_type === 'freetext' || input.input_type === 'free text') && (
+                    <textarea
+                      className="dialog-form-textarea"
+                      placeholder="Enter details..."
+                      value={dialogFormState[input.input_id] || ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value.length <= 200) {
+                          setDialogFormState((prev) => ({
+                            ...prev,
+                            [input.input_id]: value,
+                          }));
+                        }
+                      }}
+                      maxLength={200}
+                      rows={4}
+                    />
+                  )}
+                </div>
+                ))
+              ) : (
+                <div className="dialog-empty-message">
+                  <p>No input fields configured for this tab.</p>
+                </div>
+              )}
+            </div>
+            <div className="add-input-dialog-footer">
+              <button
+                type="button"
+                className="dialog-cancel-button"
+                onClick={handleCloseDialog}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="dialog-add-button"
+                onClick={handleAddInput}
+                disabled={isSubmittingInput}
+              >
+                {isSubmittingInput 
+                  ? (editingInput ? 'Updating...' : 'Submitting...') 
+                  : (editingInput ? 'Update' : 'Add')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Input Confirmation Dialog */}
+      {showDeleteInputDialog && inputToDelete && (
+        <div
+          className="delete-dialog-backdrop"
+          role="presentation"
+          onClick={handleCancelDeleteInput}
+        >
+          <div
+            className="delete-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-input-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="delete-dialog-header">
+              <h3 id="delete-input-dialog-title">Delete Input</h3>
+              <button
+                type="button"
+                className="dialog-close-button"
+                onClick={handleCancelDeleteInput}
+                aria-label="Close"
+                disabled={isDeletingInput}
+              >
+                ×
+              </button>
+            </div>
+            <div className="delete-dialog-content">
+              <p>
+                Are you sure you want to delete this input entry?
+              </p>
+              <p style={{ color: '#dc2626', marginTop: '0.5rem' }}>
+                This action cannot be undone.
+              </p>
+              {deleteInputError && (
+                <div className="delete-error-message" style={{
+                  marginTop: '1rem',
+                  padding: '0.75rem',
+                  backgroundColor: '#fee',
+                  color: '#c33',
+                  borderRadius: '4px',
+                  border: '1px solid #fcc'
+                }}>
+                  {deleteInputError}
+                </div>
+              )}
+            </div>
+            <div className="delete-dialog-footer">
+              <button
+                type="button"
+                className="dialog-cancel-button"
+                onClick={handleCancelDeleteInput}
+                disabled={isDeletingInput}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="dialog-delete-button"
+                onClick={handleConfirmDeleteInput}
+                disabled={isDeletingInput}
+              >
+                {isDeletingInput ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>
