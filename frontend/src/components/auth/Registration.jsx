@@ -26,7 +26,6 @@ const Registration = ({ onNavigateToLogin, onRegister }) => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({
         ...prev,
@@ -91,24 +90,19 @@ const Registration = ({ onNavigateToLogin, onRegister }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setApiError(''); // Clear previous errors
+    setApiError('');
     
     if (validateForm()) {
       setLoading(true);
       
       try {
-        // Remove confirmPassword before submit (it's only for validation)
         const { confirmPassword, ...registrationData } = formData;
         
-        // Send registration data (photo is removed - using default avatar instead)
         const response = await registerUser(registrationData);
         
-        // Store the token
         storeToken(response.access_token);
         
-        // Store user data and pass to parent
         if (response.user) {
-          // Update user profile in parent component
           onRegister && onRegister(response.user);
           alert('Registration successful!');
         } else {
@@ -116,7 +110,6 @@ const Registration = ({ onNavigateToLogin, onRegister }) => {
           alert('Registration successful!');
         }
       } catch (error) {
-        // Handle API errors
         const errorMessage = error.message || 'Registration failed. Please try again.';
         setApiError(errorMessage);
         setErrors({

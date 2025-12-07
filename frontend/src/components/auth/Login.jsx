@@ -18,7 +18,6 @@ const Login = ({ onNavigateToRegister, onLogin }) => {
       ...prev,
       [name]: value
     }));
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({
         ...prev,
@@ -44,7 +43,7 @@ const Login = ({ onNavigateToRegister, onLogin }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setApiError(''); // Clear previous errors
+    setApiError('');
     
     if (validateForm()) {
       setLoading(true);
@@ -52,18 +51,14 @@ const Login = ({ onNavigateToRegister, onLogin }) => {
       try {
         const response = await loginUser(formData.username, formData.password);
         
-        // Store the token
         storeToken(response.access_token);
         
-        // Store user data if needed
         if (response.user) {
-          // Pass user data to parent component
           onLogin(response.user);
         } else {
           onLogin();
         }
       } catch (error) {
-        // Handle API errors
         setApiError(error.message || 'Invalid username or password');
         setErrors({
           ...errors,

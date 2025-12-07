@@ -5,7 +5,6 @@ import avatarDefault from '../assets/avatar-default.svg';
 const AllUsers = ({ onSelectUser }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Mock data - in a real app, this would come from API
   const allUsers = useMemo(() => {
     return Array.from({ length: 20 }).map((_, i) => ({
       id: i + 1,

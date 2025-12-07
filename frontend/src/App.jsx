@@ -9,20 +9,18 @@ import Profile from './components/profile/Profile';
 import MyCommunities from './components/community/MyCommunities';
 import AllUsers from './components/AllUsers';
 import OtherUserProfile from './components/OtherUserProfile';
-import avatarDefault from './assets/avatar-default.svg';
 import { logoutUser, removeToken, checkSession, getToken, getCommunityById } from './services/api';
 import './App.css'
 
 function App() {
   const [currentView, setCurrentView] = useState('login')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [isLoading, setIsLoading] = useState(true) // Loading state for session check
+  const [isLoading, setIsLoading] = useState(true)
   const [selectedCommunity, setSelectedCommunity] = useState(null)
   const [userProfile, setUserProfile] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
-  // Check for existing session on app load
   useEffect(() => {
     const restoreSession = async () => {
       try {
@@ -30,25 +28,19 @@ function App() {
         const token = getToken();
         
         if (token) {
-          // Try to restore session
           const userData = await checkSession();
           if (userData) {
-            // Valid session found - restore user state
             console.log('Session restored:', userData);
             setUserProfile(userData);
             setIsLoggedIn(true);
             
-            // Don't set view here - let the routing useEffect handle it based on URL
-            // This ensures the correct view is set when refreshing on any page
           } else {
-            // Invalid token - clear it and navigate to login
             console.log('No valid session found - navigating to login');
             setIsLoggedIn(false);
             setCurrentView('login');
             window.history.replaceState({ view: 'login' }, '', '/');
           }
         } else {
-          // No token - navigate to login
           console.log('No auth token found - navigating to login');
           setIsLoggedIn(false);
           setCurrentView('login');
@@ -65,16 +57,14 @@ function App() {
     };
 
     restoreSession();
-  }, []); // Run once on mount
+  }, []);
 
-  // Sync URL <-> view on load and on back/forward
   useEffect(() => {
-    if (isLoading) return; // Don't apply routes while checking session
+    if (isLoading) return;
     
     const applyRoute = () => {
       const path = window.location.pathname
       if (!isLoggedIn) {
-        // If not logged in, always redirect to login (unless on registration)
         if (path.startsWith('/register')) {
           setCurrentView('registration')
           return
@@ -98,9 +88,7 @@ function App() {
       if (path.startsWith('/community/') && !path.startsWith('/community/create')) {
         const idStr = path.replace('/community/', '')
         const id = parseInt(idStr, 10)
-        // Set view first, then fetch data
         setCurrentView('communityDetails')
-        // Always fetch community from API to ensure we have the latest data with tabs
         const fetchCommunity = async () => {
           try {
             const community = await getCommunityById(id);
@@ -117,7 +105,6 @@ function App() {
             setSelectedCommunity(mappedCommunity);
           } catch (err) {
             console.error('Error fetching community:', err);
-            // Fallback to placeholder
             setSelectedCommunity({ id, title: `Community ${id}`, description: 'No description provided.', tabs: [] });
           }
         };
@@ -144,7 +131,6 @@ function App() {
         const username = path.replace('/user/', '')
         setSelectedUser((prev) => {
           if (prev && prev.username === username) return prev;
-          // For now, create a placeholder
           return {
             id: Math.random(),
             username: username,
@@ -185,35 +171,29 @@ function App() {
   const handleLogin = (userData = null) => {
     setIsLoggedIn(true)
     
-    // If user data is provided from API, store it
     if (userData) {
       setUserProfile(userData)
     }
     
     setCurrentView('main')
-    // Push state to history to allow back navigation
     window.history.pushState({ view: 'main' }, '', '/main')
   }
 
   const handleLogout = async () => {
-    // Call backend logout endpoint to blacklist token
     try {
       await logoutUser();
     } catch (error) {
       console.error('Logout API error:', error);
-      // Even if API call fails, proceed with frontend logout
       removeToken();
     }
     
     setIsLoggedIn(false)
     setCurrentView('login')
     setUserProfile(null)
-    // Replace current history entry to prevent back navigation to main screen
     window.history.replaceState({ view: 'login' }, '', '/')
   }
 
   const handleOpenCommunity = (community) => {
-    // Always fetch full community details from API when opening
     const fetchFullCommunity = async () => {
       if (community?.id) {
         try {
@@ -231,7 +211,6 @@ function App() {
           setSelectedCommunity(mappedCommunity);
         } catch (err) {
           console.error('Error fetching community:', err);
-          // Fallback to the community data we have
           setSelectedCommunity(community);
         }
       } else {
@@ -250,7 +229,6 @@ function App() {
   }
 
   const handleProfileRegistration = (userData) => {
-    // userData comes from API response (already has user info without passwords)
     setUserProfile(userData);
     setIsLoggedIn(true)
     setCurrentView('main')
@@ -274,7 +252,6 @@ function App() {
 
   const handleSaveProfile = (updated) => {
     setUserProfile(updated);
-    // Show success message
     setSuccessMessage('Profile updated successfully!');
     setTimeout(() => {
       setSuccessMessage(null);
@@ -282,8 +259,6 @@ function App() {
   };
 
   const handleDeleteAccount = async () => {
-    // This will be called after successful deletion in Profile component
-    // Clear token and logout
     removeToken();
     setIsLoggedIn(false);
     setCurrentView('login');
@@ -292,15 +267,12 @@ function App() {
   };
 
   const handlePasswordUpdated = () => {
-    // Show success message
     setSuccessMessage('Password updated successfully! Please login again with your new password.');
     
-    // Clear success message after 5 seconds
     setTimeout(() => {
       setSuccessMessage(null);
     }, 5000);
     
-    // Logout user for security (they must login again with new password)
     removeToken();
     setIsLoggedIn(false);
     setCurrentView('login');
@@ -326,40 +298,32 @@ function App() {
   };
 
   const handleCommunityDeleted = (communityTitle) => {
-    // Show success message
     setSuccessMessage(`Community "${communityTitle}" has been deleted successfully.`);
     
-    // Clear success message after 5 seconds
     setTimeout(() => {
       setSuccessMessage(null);
     }, 5000);
     
-    // Navigate to home
     setCurrentView('main');
     setSelectedCommunity(null);
     window.history.pushState({ view: 'main' }, '', '/main');
   };
 
   const handleCommunityUpdated = (updatedCommunity) => {
-    // Preserve tabs if they exist in the current community
     const communityWithTabs = {
       ...updatedCommunity,
       tabs: updatedCommunity.tabs || selectedCommunity?.tabs || [],
     };
-    // Update the selected community with new values
     setSelectedCommunity(communityWithTabs);
     
-    // Show success message
     setSuccessMessage(`Community "${updatedCommunity.title}" has been updated successfully.`);
     
-    // Clear success message after 5 seconds
     setTimeout(() => {
       setSuccessMessage(null);
     }, 5000);
   };
 
   const renderCurrentView = () => {
-    // Show loading while checking session
     if (isLoading) {
       return (
         <div style={{ 

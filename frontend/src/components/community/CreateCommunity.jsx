@@ -7,19 +7,15 @@ const CreateCommunity = ({ onCommunityCreated }) => {
   const [description, setDescription] = useState('');
   const [tabs, setTabs] = useState([]);
   
-  // Tab creation state
   const [newTabName, setNewTabName] = useState('');
   const [newTabColor, setNewTabColor] = useState('#f97316');
   const [newTabDescription, setNewTabDescription] = useState('');
   const [showTabForm, setShowTabForm] = useState(false);
   
-  // Track which tabs are expanded
   const [expandedTabs, setExpandedTabs] = useState(new Set());
   
-  // Input configuration state (per tab)
   const [inputStates, setInputStates] = useState({});
   
-  // Editing states for items
   const [editingInputItemIndex, setEditingInputItemIndex] = useState(null);
   const [editingInputItemInputId, setEditingInputItemInputId] = useState(null);
   const [editingInputItemValue, setEditingInputItemValue] = useState('');
@@ -35,7 +31,6 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   };
 
-  // Initialize input state for a tab
   const getInputState = (tabId) => {
     if (!inputStates[tabId]) {
       return {
@@ -65,13 +60,11 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     });
   };
 
-  // Tab management
   const handleAddTab = () => {
     if (!newTabName.trim()) {
       return;
     }
 
-    // Check tab limit
     if (tabs.length >= MAX_TABS) {
       setError(`Maximum ${MAX_TABS} tabs allowed per community`);
       return;
@@ -90,8 +83,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     setNewTabColor('#f97316');
     setNewTabDescription('');
     setShowTabForm(false);
-    setError(null); // Clear any previous errors
-    // Auto-expand the newly created tab
+    setError(null);
     setExpandedTabs(prev => new Set([...prev, newTab.id]));
   };
 
@@ -118,7 +110,6 @@ const CreateCommunity = ({ onCommunityCreated }) => {
       newSet.delete(tabId);
       return newSet;
     });
-    // Clean up input state for deleted tab
     setInputStates(prev => {
       const newStates = { ...prev };
       delete newStates[tabId];
@@ -126,7 +117,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     });
   };
 
-  // Input management (per tab)
+
   const handleAddItem = (tabId) => {
     const state = getInputState(tabId);
     if (state.currentInputValue.trim()) {

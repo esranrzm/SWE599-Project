@@ -9,10 +9,8 @@ const OtherUserProfile = ({ user, onOpenCommunity }) => {
   
   const { email, name, surname, username, profession, dateOfBirth } = user;
 
-  // Always use default avatar icon
   const displayPhoto = avatarDefault;
 
-  // Mock user's communities data
   const userCommunities = useMemo(() => {
     const communities = [
       {

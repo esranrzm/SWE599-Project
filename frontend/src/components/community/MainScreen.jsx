@@ -15,7 +15,6 @@ const MainScreen = ({ onOpenCommunity }) => {
         setError(null);
         const communities = await getAllCommunities();
         
-        // Map API response to match the expected format
         const mappedCommunities = communities.map(community => ({
           id: community.id,
           title: community.title,

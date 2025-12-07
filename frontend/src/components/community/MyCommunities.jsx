@@ -4,27 +4,24 @@ import { getAllCommunities, getMyCommunities } from '../../services/api';
 
 const MyCommunities = ({ onOpenCommunity }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeSection, setActiveSection] = useState('all'); // 'created', 'contributed', 'all'
+  const [activeSection, setActiveSection] = useState('all');
   const [allCommunities, setAllCommunities] = useState([]);
   const [myCommunities, setMyCommunities] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch communities based on active section
   useEffect(() => {
     const fetchCommunities = async () => {
       setIsLoading(true);
       setError(null);
 
       try {
-        // Fetch all communities and my communities data
-        // Note: Contributed section will be empty for now (will be connected to community inputs later)
+
         const [allData, myData] = await Promise.all([
           getAllCommunities(),
           getMyCommunities()
         ]);
 
-        // Map API responses to expected format
         const mapCommunity = (community) => ({
           id: community.id,
           title: community.title,
@@ -37,7 +34,6 @@ const MyCommunities = ({ onOpenCommunity }) => {
 
         setAllCommunities(allData.map(mapCommunity));
         setMyCommunities(myData.map(mapCommunity));
-        // Contributed section left empty for now - will be connected to community inputs later
       } catch (err) {
         console.error('Error fetching communities:', err);
         setError(err.message || 'Failed to load communities. Please try again.');
@@ -49,7 +45,7 @@ const MyCommunities = ({ onOpenCommunity }) => {
     };
 
     fetchCommunities();
-  }, []); // Fetch once on mount
+  }, []);
 
   const filteredCards = useMemo(() => {
     let cardsToShow = [];
@@ -57,7 +53,6 @@ const MyCommunities = ({ onOpenCommunity }) => {
     if (activeSection === 'created') {
       cardsToShow = myCommunities;
     } else if (activeSection === 'contributed') {
-      // Contributed section is empty for now - will be connected to community inputs later
       cardsToShow = [];
     } else {
       cardsToShow = allCommunities;

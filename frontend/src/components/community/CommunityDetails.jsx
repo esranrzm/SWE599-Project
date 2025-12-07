@@ -2,172 +2,6 @@ import React, { useMemo, useState, useEffect } from 'react';
 import './CommunityDetails.css';
 import { deleteCommunity, updateCommunity, getCommunityById, submitCommunityInput, getCommunityInputs, updateCommunityInput, deleteCommunityInput } from '../../services/api';
 
-// Category definitions with descriptions
-const categories = {
-  volunteering: {
-    id: 'volunteering',
-    label: 'Volunteering',
-    description: 'Share your time, skills, and availability to help with community activities and projects.',
-    color: '#f97316', // orange
-    inputTypes: [
-      { value: 'freeText', label: 'Free text' },
-      { value: 'multipleSelect', label: 'Skills selection' },
-      { value: 'timeAvailability', label: 'Time availability' },
-    ],
-  },
-  itemsNeeded: {
-    id: 'itemsNeeded',
-    label: 'Items Needed',
-    description: 'List physical items, supplies, or materials that the community needs or that you can provide.',
-    color: '#10b981', // green
-    inputTypes: [
-      { value: 'freeText', label: 'Free text' },
-      { value: 'dropdownList', label: 'Item selection' },
-      { value: 'quantityInput', label: 'Quantity & details' },
-    ],
-  },
-  moneyDonations: {
-    id: 'moneyDonations',
-    label: 'Money Donations',
-    description: 'Contribute financial support or organize fundraising activities for community initiatives.',
-    color: '#8b5cf6', // purple
-    inputTypes: [
-      { value: 'freeText', label: 'Free text' },
-      { value: 'amountInput', label: 'Donation amount' },
-      { value: 'fundraisingIdea', label: 'Fundraising idea' },
-    ],
-  },
-  recommendations: {
-    id: 'recommendations',
-    label: 'Recommendations',
-    description: 'Suggest ideas, resources, contacts, or strategies to improve community projects and outcomes.',
-    color: '#dc2626', // dark red
-    inputTypes: [
-      { value: 'freeText', label: 'Free text' },
-      { value: 'contactInfo', label: 'Contact recommendation' },
-      { value: 'resourceLink', label: 'Resource link' },
-    ],
-  },
-};
-
-// Category-specific dropdown items
-const categoryDropdownItems = {
-  itemsNeeded: [
-    'Student Chair',
-    'Classroom Heater',
-    'Whiteboard',
-    'School Supplies Kit',
-    'Books',
-    'Computers',
-    'Desks',
-    'Lighting Equipment',
-  ],
-  volunteering: [
-    'Construction work',
-    'Teaching/Tutoring',
-    'Event organization',
-    'Administrative support',
-    'Transportation',
-    'Technical support',
-  ],
-  moneyDonations: [
-    'One-time donation',
-    'Monthly contribution',
-    'Fundraising event',
-    'Sponsorship',
-  ],
-  recommendations: [
-    'Local business contact',
-    'NGO partnership',
-    'Government resource',
-    'Educational resource',
-  ],
-};
-
-// Category-specific multi-select options
-const categoryMultiSelectOptions = {
-  volunteering: [
-    'I know how to construct a wall',
-    'I can work in library set up',
-    'I can work in tool management',
-    'I can help with electrical installations',
-    'I can teach/tutor',
-    'I can help with event planning',
-    'I have transportation available',
-  ],
-  itemsNeeded: [
-    'I can donate new items',
-    'I can donate used items in good condition',
-    'I can help with item collection',
-    'I can provide storage space',
-  ],
-  moneyDonations: [
-    'I can make a one-time donation',
-    'I can commit to monthly donations',
-    'I can help organize fundraising',
-    'I have corporate sponsorship contacts',
-  ],
-  recommendations: [
-    'I know local suppliers',
-    'I have NGO contacts',
-    'I know government resources',
-    'I have educational contacts',
-  ],
-};
-
-const defaultInputs = [
-  {
-    id: '1',
-    creator: 'alivel123',
-    category: 'moneyDonations',
-    type: 'Free text',
-    createdAt: '2025-10-30T09:30:00Z',
-    details:
-      'We can organize a bake sale to raise funds for new desks. I am ready to coordinate volunteers.',
-  },
-  {
-    id: '2',
-    creator: 'alivel124',
-    category: 'itemsNeeded',
-    type: 'Drop down list',
-    createdAt: '2025-10-30T16:45:00Z',
-    details: 'Student Chair — I can donate 100 student chairs.',
-  },
-  {
-    id: '3',
-    creator: 'alivel125',
-    category: 'volunteering',
-    type: 'Free text',
-    createdAt: '2025-10-31T08:21:00Z',
-    details: 'I will contact local carpenters to see if they can help.',
-  },
-  {
-    id: '4',
-    creator: 'alivel126',
-    category: 'volunteering',
-    type: 'Multiple select',
-    createdAt: '2025-11-01T10:12:00Z',
-    details:
-      'Skills: I know how to construct a wall, I can work in tool management.',
-  },
-  {
-    id: '5',
-    creator: 'alivel127',
-    category: 'itemsNeeded',
-    type: 'Free text',
-    createdAt: '2025-11-02T13:57:00Z',
-    details: 'I can organize transport for donated items from nearby cities.',
-  },
-  {
-    id: '6',
-    creator: 'alivel128',
-    category: 'recommendations',
-    type: 'Free text',
-    createdAt: '2025-10-30T12:05:00Z',
-    details:
-      'Local NGO promised to donate heating equipment if we arrange logistics.',
-  },
-];
 
 const formatDate = (isoString) => {
   const date = new Date(isoString);
@@ -194,7 +28,6 @@ const createId = () => {
 
 const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunityUpdated }) => {
   const communityTabs = useMemo(() => {
-    // Always prefer tabs from API, even if empty array
     if (community?.tabs && Array.isArray(community.tabs)) {
       console.log('Using tabs from API:', community.tabs);
       return community.tabs;
@@ -243,12 +76,9 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   const [isDeletingInput, setIsDeletingInput] = useState(false);
   const [deleteInputError, setDeleteInputError] = useState(null);
 
-  // Use community prop values directly - they will update when prop changes
   const title = community?.title || 'Community Title';
   const description = community?.description || 'No description provided.';
-  // Support both API format (creator_name) and mapped format (creator)
   const communityOwner = community?.creator || community?.creator_name || 'Unknown';
-  // Support both API format (created_at) and mapped format (createdAt)
   const createdAt = formatDate(
     community?.createdAt || community?.created_at || new Date().toISOString(),
   );
@@ -274,17 +104,14 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     if (!selectedCategory) {
       return [];
     }
-    // First filter by category
     let filtered = inputs.filter((input) => {
       const inputCategory = input.category;
       return inputCategory === selectedCategory || 
              String(inputCategory) === String(selectedCategory);
     });
 
-    // Then filter by type if not 'all' - check if type contains the filter
     if (typeFilter !== 'all') {
       filtered = filtered.filter((input) => {
-        // Check if the type string contains the filter (case insensitive)
         return input.type && input.type.toLowerCase().includes(typeFilter.toLowerCase());
       });
     }
@@ -328,22 +155,17 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     const initialState = {};
     
     if (inputToEdit && inputToEdit.inputs) {
-      // Pre-fill form with existing values when editing
       tabInputs.forEach((input) => {
         const existingInput = inputToEdit.inputs.find(inp => inp.inputTitle === input.input_title);
         if (existingInput) {
           if (input.input_type === 'multiselect') {
-            // Extract values from items array
             initialState[input.input_id] = existingInput.items?.map(item => item.value || item) || [];
           } else if (input.input_type === 'dropdown') {
-            // Get the selected value
             initialState[input.input_id] = existingInput.items?.[0]?.value || existingInput.value || '';
           } else {
-            // Free text
             initialState[input.input_id] = existingInput.value || '';
           }
         } else {
-          // No existing value, initialize empty
           if (input.input_type === 'multiselect') {
             initialState[input.input_id] = [];
           } else {
@@ -352,7 +174,6 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         }
       });
     } else {
-      // Initialize empty form for new input
       tabInputs.forEach((input) => {
         if (input.input_type === 'multiselect') {
           initialState[input.input_id] = [];
@@ -485,24 +306,21 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
       // Refresh inputs to show updated entry in table
       const fetchedInputs = await getCommunityInputs(community.id, selectedTab.id);
       
-      // Group inputs by creator and created_at (within same second = same submission)
       const groupedInputs = {};
       fetchedInputs.forEach(input => {
         const createdDate = new Date(input.created_at);
-        // Round to nearest second for grouping
         const groupKey = `${input.creator_name || 'Unknown'}_${Math.floor(createdDate.getTime() / 1000)}`;
         
         if (!groupedInputs[groupKey]) {
           groupedInputs[groupKey] = {
-            id: input.id, // Use first input's ID as group ID
+            id: input.id,
             creator: input.creator_name || 'Unknown',
             createdAt: input.created_at,
             category: selectedCategory,
-            inputs: [] // Array to store all inputs in this submission
+            inputs: []
           };
         }
         
-        // Map database type to display format
         const typeDisplayMap = {
           'free text': 'Free Text',
           'dropdown list': 'Dropdown',
@@ -520,18 +338,16 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         });
       });
       
-      // Convert grouped object to array and format for display
       const mappedInputs = Object.values(groupedInputs).map(group => {
-        // Combine all types into one string
         const allTypes = group.inputs.map(inp => inp.displayType).join(', ');
         
         return {
           id: group.id,
           creator: group.creator,
-          type: allTypes, // Show all input types
+          type: allTypes,
           createdAt: group.createdAt,
           category: group.category,
-          inputs: group.inputs // Store all inputs for details modal
+          inputs: group.inputs
         };
       });
       
@@ -568,36 +384,30 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     try {
       await deleteCommunityInput(community.id, inputToDelete.id);
 
-      // Show success message
       setSubmitSuccessMessage('Input deleted successfully!');
       setTimeout(() => {
         setSubmitSuccessMessage(null);
       }, 5000);
 
-      // Close dialog
       handleCancelDeleteInput();
 
-      // Refresh inputs to remove deleted entry from table
       const fetchedInputs = await getCommunityInputs(community.id, selectedCategory);
       
-      // Group inputs by creator and created_at (within same second = same submission)
       const groupedInputs = {};
       fetchedInputs.forEach(input => {
         const createdDate = new Date(input.created_at);
-        // Round to nearest second for grouping
         const groupKey = `${input.creator_name || 'Unknown'}_${Math.floor(createdDate.getTime() / 1000)}`;
         
         if (!groupedInputs[groupKey]) {
           groupedInputs[groupKey] = {
-            id: input.id, // Use first input's ID as group ID
+            id: input.id,
             creator: input.creator_name || 'Unknown',
             createdAt: input.created_at,
             category: selectedCategory,
-            inputs: [] // Array to store all inputs in this submission
+            inputs: []
           };
         }
         
-        // Map database type to display format
         const typeDisplayMap = {
           'free text': 'Free Text',
           'dropdown list': 'Dropdown',
@@ -615,18 +425,16 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         });
       });
       
-      // Convert grouped object to array and format for display
       const mappedInputs = Object.values(groupedInputs).map(group => {
-        // Combine all types into one string
         const allTypes = group.inputs.map(inp => inp.displayType).join(', ');
         
         return {
           id: group.id,
           creator: group.creator,
-          type: allTypes, // Show all input types
+          type: allTypes,
           createdAt: group.createdAt,
           category: group.category,
-          inputs: group.inputs // Store all inputs for details modal
+          inputs: group.inputs
         };
       });
       
@@ -643,7 +451,6 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     if (!selectedCategory || communityTabs.length === 0) {
       return null;
     }
-    // Try to find tab by id (could be number or string)
     const foundTab = communityTabs.find(tab => 
       tab.id === selectedCategory || 
       String(tab.id) === String(selectedCategory) ||
@@ -653,39 +460,31 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     return foundTab || communityTabs[0];
   }, [communityTabs, selectedCategory]);
 
-  // Get available input types for the selected category (for filter dropdown)
   const getAvailableInputTypes = () => {
     if (!selectedTab) {
       return [];
     }
-    // Handle both API format (inputTypes) and frontend format
     const inputTypes = selectedTab?.inputTypes || selectedTab?.input_types || [];
     if (Array.isArray(inputTypes) && inputTypes.length > 0) {
-      // Use input types from community config
       return inputTypes.map(inputType => ({
         value: inputType.type === 'free text' ? 'freeText' : 
                inputType.type === 'dropdown list' ? 'dropdownList' : 
                inputType.type === 'multiple select' ? 'multipleSelect' : inputType.type,
         label: inputType.name || inputType.type,
-        config: inputType // Store full config for accessing items
+        config: inputType
       }));
     }
-    // Return empty array if no input types (don't use mock data)
     return [];
   };
 
-  // Handle category change
   const handleCategoryChange = (categoryId) => {
     setSelectedCategory(categoryId);
     setTypeFilter('all');
   };
 
-  // Fetch community data if missing or incomplete (missing tabs property)
   useEffect(() => {
     const fetchCommunityIfNeeded = async () => {
       if (community?.id) {
-        // If community exists but doesn't have tabs property at all, fetch full data
-        // This handles the case where we only have basic info from the card list
         if (community.tabs === undefined && community.tabs_config === undefined) {
           console.log('Fetching full community data for ID:', community.id);
           try {
@@ -700,7 +499,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
               updatedAt: fullCommunity.updated_at,
               tabs: fullCommunity.tabs || [],
             };
-            // Update parent component's state via callback
+            
             if (onCommunityUpdated) {
               onCommunityUpdated(mappedCommunity);
             }
@@ -712,9 +511,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     };
     
     fetchCommunityIfNeeded();
-  }, [community?.id, community?.tabs, onCommunityUpdated]); // Run when community ID or tabs change
+  }, [community?.id, community?.tabs, onCommunityUpdated]);
 
-  // Fetch inputs when community or selected tab changes
   useEffect(() => {
     const fetchInputs = async () => {
       if (!community?.id || !selectedCategory) {
@@ -726,24 +524,22 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
       try {
         const fetchedInputs = await getCommunityInputs(community.id, selectedCategory);
         
-        // Group inputs by creator and created_at (within same second = same submission)
         const groupedInputs = {};
         fetchedInputs.forEach(input => {
           const createdDate = new Date(input.created_at);
-          // Round to nearest second for grouping
+          
           const groupKey = `${input.creator_name || 'Unknown'}_${Math.floor(createdDate.getTime() / 1000)}`;
           
           if (!groupedInputs[groupKey]) {
             groupedInputs[groupKey] = {
-              id: input.id, // Use first input's ID as group ID
+              id: input.id,
               creator: input.creator_name || 'Unknown',
               createdAt: input.created_at,
               category: selectedCategory,
-              inputs: [] // Array to store all inputs in this submission
+              inputs: []
             };
           }
           
-          // Map database type to display format
           const typeDisplayMap = {
             'free text': 'Free Text',
             'dropdown list': 'Dropdown',
@@ -761,18 +557,16 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           });
         });
         
-        // Convert grouped object to array and format for display
         const mappedInputs = Object.values(groupedInputs).map(group => {
-          // Combine all types into one string
           const allTypes = group.inputs.map(inp => inp.displayType).join(', ');
           
           return {
             id: group.id,
             creator: group.creator,
-            type: allTypes, // Show all input types
+            type: allTypes,
             createdAt: group.createdAt,
             category: group.category,
-            inputs: group.inputs // Store all inputs for details modal
+            inputs: group.inputs
           };
         });
         
@@ -788,28 +582,23 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     fetchInputs();
   }, [community?.id, selectedCategory]);
 
-  // Debug: Log community and tabs changes
   useEffect(() => {
     console.log('Community prop changed:', community);
     console.log('Community tabs:', community?.tabs);
     console.log('Computed communityTabs:', communityTabs);
   }, [community, communityTabs]);
 
-  // Update selected category when communityTabs change
   useEffect(() => {
     if (communityTabs.length > 0) {
-      // Check if current selectedCategory exists in tabs
       const tabExists = communityTabs.find(tab => 
         tab.id === selectedCategory || 
         String(tab.id) === String(selectedCategory)
       );
       if (!tabExists) {
-        // Select first tab if current selection doesn't exist
         console.log('Setting selectedCategory to first tab:', communityTabs[0].id);
         setSelectedCategory(communityTabs[0].id);
       }
     } else if (selectedCategory !== null) {
-      // Reset to null if no tabs available
       setSelectedCategory(null);
     }
   }, [communityTabs, selectedCategory]);
@@ -836,7 +625,6 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     try {
       await deleteCommunity(community.id);
       
-      // Call the success callback which will handle navigation
       if (onDeleteSuccess) {
         onDeleteSuccess(community.title || 'Community');
       }
@@ -847,7 +635,6 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   };
 
   const handleUpdateClick = () => {
-    // Pre-fill form with existing values
     setUpdateForm({
       title: community?.title || '',
       description: community?.description || ''
