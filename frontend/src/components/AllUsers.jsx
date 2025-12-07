@@ -1,20 +1,48 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import './AllUsers.css';
 import avatarDefault from '../assets/avatar-default.svg';
+import { getAllUsers } from '../services/api';
 
 const AllUsers = ({ onSelectUser }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [allUsers, setAllUsers] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const allUsers = useMemo(() => {
-    return Array.from({ length: 20 }).map((_, i) => ({
-      id: i + 1,
-      username: `user${i + 1}`,
-      name: `User ${i + 1}`,
-      surname: `Surname ${i + 1}`,
-      email: `user${i + 1}@example.com`,
-      profession: `Profession ${i + 1}`,
-      dateOfBirth: '2000-01-01',
-    }));
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const users = await getAllUsers();
+        
+        const mappedUsers = users.map(user => {
+          let dateOfBirth = null;
+          if (user.date_of_birth) {
+            dateOfBirth = String(user.date_of_birth).split('T')[0];
+          }
+          
+          return {
+            id: user.id,
+            username: user.username,
+            name: user.name,
+            surname: user.surname,
+            email: user.email,
+            profession: user.profession,
+            dateOfBirth: dateOfBirth,
+          };
+        });
+        
+        setAllUsers(mappedUsers);
+      } catch (err) {
+        console.error('Error fetching users:', err);
+        setError(err.message || 'Failed to load users');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUsers();
   }, []);
 
   const filteredUsers = useMemo(() => {
@@ -29,6 +57,36 @@ const AllUsers = ({ onSelectUser }) => {
       user.surname.toLowerCase().includes(query)
     );
   }, [searchQuery, allUsers]);
+
+  if (isLoading) {
+    return (
+      <div className="all-users-page">
+        <div className="all-users-content">
+          <div className="all-users-header">
+            <h1 className="all-users-title">ComHub Users</h1>
+          </div>
+          <div style={{ textAlign: 'center', padding: '2rem' }}>
+            <p>Loading users...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="all-users-page">
+        <div className="all-users-content">
+          <div className="all-users-header">
+            <h1 className="all-users-title">ComHub Users</h1>
+          </div>
+          <div style={{ textAlign: 'center', padding: '2rem', color: '#ef4444' }}>
+            <p>Error: {error}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="all-users-page">

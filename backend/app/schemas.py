@@ -104,6 +104,8 @@ class InputTypeResponse(BaseModel):
     type: str
     name: str
     creator_name: Optional[str] = None
+    creator_username: Optional[str] = None
+    creator_email: Optional[str] = None
     display_order: int
     items: List[InputTypeItemResponse] = []
     created_at: datetime
@@ -170,6 +172,8 @@ class CommunityResponse(BaseModel):
     description: str
     creator_id: int
     creator_name: str
+    creator_username: Optional[str] = None
+    creator_email: Optional[str] = None
     tabs: Optional[List[CommunityTabResponse]] = Field(default=None)
     created_at: datetime
     updated_at: Optional[datetime] = None

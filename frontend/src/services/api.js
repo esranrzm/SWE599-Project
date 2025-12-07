@@ -652,3 +652,231 @@ export const deleteCommunity = async (communityId) => {
 };
 
 
+export const getCommunityInputsCount = async (communityId) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/communities/${communityId}/inputs/count`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch community inputs count');
+    }
+
+    return data.count || 0;
+  } catch (error) {
+    console.error('Get community inputs count error:', error);
+    throw error;
+  }
+};
+
+
+export const getAllUsers = async (options = {}) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const { skip = 0, limit = 100 } = options;
+    const queryParams = new URLSearchParams();
+    if (skip > 0) queryParams.append('skip', skip);
+    if (limit !== 100) queryParams.append('limit', limit);
+
+    const queryString = queryParams.toString();
+    const url = `${API_BASE_URL}/auth/users${queryString ? `?${queryString}` : ''}`;
+    
+    console.log('Fetching users from:', url);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          removeToken();
+        }
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to fetch users' }));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Users fetched successfully:', data.length);
+      return data;
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Request timeout: The server took too long to respond');
+      }
+      throw fetchError;
+    }
+  } catch (error) {
+    console.error('Get all users error:', error);
+    throw error;
+  }
+};
+
+
+export const getUserByUsername = async (username) => {
+  try {
+    const url = `${API_BASE_URL}/auth/users/${encodeURIComponent(username)}`;
+    console.log('Fetching user from:', url);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to fetch user' }));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      let dateOfBirth = null;
+      if (data.date_of_birth) {
+        dateOfBirth = String(data.date_of_birth).split('T')[0];
+      }
+
+      console.log('User fetched successfully:', data.username);
+      return {
+        id: data.id,
+        username: data.username,
+        email: data.email,
+        name: data.name,
+        surname: data.surname,
+        profession: data.profession,
+        dateOfBirth: dateOfBirth,
+        photoUrl: data.photo_url,
+        photo: data.photo_url,
+        createdAt: data.created_at
+      };
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Request timeout: The server took too long to respond');
+      }
+      throw fetchError;
+    }
+  } catch (error) {
+    console.error('Get user by username error:', error);
+    throw error;
+  }
+};
+
+
+export const getUsersByName = async (name) => {
+  try {
+    const url = `${API_BASE_URL}/auth/users/by-name/${encodeURIComponent(name)}`;
+    console.log('Searching users by name:', url);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to search users' }));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Users found by name:', data.length);
+      return data;
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Request timeout: The server took too long to respond');
+      }
+      throw fetchError;
+    }
+  } catch (error) {
+    console.error('Get users by name error:', error);
+    throw error;
+  }
+};
+
+
+export const getUserCommunities = async (userId, options = {}) => {
+  try {
+    const { skip = 0, limit = 100 } = options;
+    const queryParams = new URLSearchParams();
+    if (skip > 0) queryParams.append('skip', skip);
+    if (limit !== 100) queryParams.append('limit', limit);
+
+    const queryString = queryParams.toString();
+    const url = `${API_BASE_URL}/communities/user/${userId}/created${queryString ? `?${queryString}` : ''}`;
+    
+    console.log('Fetching user communities from:', url);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to fetch user communities' }));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('User communities fetched successfully:', data.length);
+      return data;
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Request timeout: The server took too long to respond');
+      }
+      throw fetchError;
+    }
+  } catch (error) {
+    console.error('Get user communities error:', error);
+    throw error;
+  }
+};
+
+

@@ -26,7 +26,7 @@
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 14px;
-  padding: 2rem;
+  padding: 2rem 1rem 0.5rem 1rem;
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
 }
 
@@ -40,7 +40,7 @@
 .details-description {
   margin: 0;
   color: #334155;
-  line-height: 1.6;
+  line-height: 1.4;
   font-size: 1rem;
 }
 
@@ -88,22 +88,27 @@
   color: #1e293b;
 }
 
+.community-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
 .update-community-button {
   background: #10b981;
   color: white;
   border: none;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 0.75rem;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   transition: background-color 0.2s ease;
   font-weight: 500;
-  width: 100%;
-  margin-top: 1.25rem;
+  flex: 1;
 }
 
 .update-community-button:hover {
@@ -122,18 +127,17 @@
   background: #dc2626;
   color: white;
   border: none;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 0.75rem;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   transition: background-color 0.2s ease;
   font-weight: 500;
-  width: 100%;
-  margin-top: 0.75rem;
+  flex: 1;
 }
 
 .delete-community-button:hover {
@@ -301,7 +305,7 @@
 
 .inputs-table-header {
   display: grid;
-  grid-template-columns: 1.2fr 1.1fr 1fr 0.7fr 0.8fr;
+  grid-template-columns: 1.2fr 1.1fr 0.7fr 0.8fr;
   background: #f1f5f9;
   border-bottom: 1px solid #e2e8f0;
   padding: 0.75rem 1.25rem;
@@ -374,7 +378,7 @@
 
 .inputs-table-row {
   display: grid;
-  grid-template-columns: 1.2fr 1.1fr 1fr 0.7fr 0.8fr;
+  grid-template-columns: 1.2fr 1.1fr 0.7fr 0.8fr;
   padding: 0.95rem 1.25rem;
   gap: 0.75rem;
   border-bottom: 1px solid #f1f5f9;
@@ -413,10 +417,6 @@
   word-break: break-word;
 }
 
-.cell.type {
-  font-weight: 600;
-  color: #0f172a;
-}
 
 .cell.created-at {
   font-variant-numeric: tabular-nums;
@@ -684,7 +684,7 @@
 
   .inputs-table-header,
   .inputs-table-row {
-    grid-template-columns: 1.5fr 1fr 1fr 0.8fr;
+    grid-template-columns: 1.5fr 1fr 0.8fr;
   }
 
   .inputs-table-header .header-cell.details,

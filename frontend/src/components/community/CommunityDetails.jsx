@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import './CommunityDetails.css';
-import { deleteCommunity, updateCommunity, getCommunityById, submitCommunityInput, getCommunityInputs, updateCommunityInput, deleteCommunityInput } from '../../services/api';
+import { deleteCommunity, updateCommunity, getCommunityById, submitCommunityInput, getCommunityInputs, updateCommunityInput, deleteCommunityInput, getCommunityInputsCount, getUserByUsername, getUsersByName } from '../../services/api';
 
 
 const formatDate = (isoString) => {
@@ -26,7 +26,7 @@ const createId = () => {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunityUpdated }) => {
+const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunityUpdated, onSelectUser }) => {
   const communityTabs = useMemo(() => {
     if (community?.tabs && Array.isArray(community.tabs)) {
       console.log('Using tabs from API:', community.tabs);
@@ -49,7 +49,6 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   });
   const [inputs, setInputs] = useState([]);
   const [isLoadingInputs, setIsLoadingInputs] = useState(false);
-  const [typeFilter, setTypeFilter] = useState('all');
   const [sortConfig, setSortConfig] = useState({
     column: 'createdAt',
     direction: 'desc',
@@ -82,10 +81,14 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   const createdAt = formatDate(
     community?.createdAt || community?.created_at || new Date().toISOString(),
   );
-  const commentCount = community?.commentCount ?? 0;
+  const [inputCount, setInputCount] = useState(0);
   
   // Check if current user is the creator
   const isCreator = currentUser && community && (currentUser.id === community.creator_id || currentUser.id === community.creatorId);
+  
+  // Get creator info from community
+  const creatorEmail = community?.creator_email || null;
+  const creatorUsername = community?.creator_username || null;
 
   const handleSort = (column) => {
     setSortConfig((prev) => {
@@ -110,12 +113,6 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
              String(inputCategory) === String(selectedCategory);
     });
 
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter((input) => {
-        return input.type && input.type.toLowerCase().includes(typeFilter.toLowerCase());
-      });
-    }
-
     // Sort the filtered results
     const sorted = [...filtered].sort((a, b) => {
       if (sortConfig.column === 'createdAt') {
@@ -138,7 +135,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     });
 
     return sorted;
-  }, [inputs, sortConfig, typeFilter, selectedCategory]);
+  }, [inputs, sortConfig, selectedCategory]);
 
   // Initialize dialog form state when dialog opens
   const initializeDialogForm = (inputToEdit = null) => {
@@ -278,7 +275,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
 
       const requestData = {
         tab_title: selectedTab.name,
-        input_creator: currentUser.username || `${currentUser.name} ${currentUser.surname}`,
+        input_creator: `${currentUser.name} ${currentUser.surname}`,
         tab_id: selectedTab.id,
         tab_inputs: tabInputsData,
         created_at: new Date().toISOString(),
@@ -315,6 +312,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           groupedInputs[groupKey] = {
             id: input.id,
             creator: input.creator_name || 'Unknown',
+            creator_username: input.creator_username || null,
+            creator_email: input.creator_email || null,
             createdAt: input.created_at,
             category: selectedCategory,
             inputs: []
@@ -344,6 +343,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         return {
           id: group.id,
           creator: group.creator,
+          creator_username: group.creator_username,
+          creator_email: group.creator_email,
           type: allTypes,
           createdAt: group.createdAt,
           category: group.category,
@@ -352,6 +353,14 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
       });
       
       setInputs(mappedInputs);
+      
+      // Refresh input count
+      try {
+        const count = await getCommunityInputsCount(community.id);
+        setInputCount(count);
+      } catch (error) {
+        console.error('Error refreshing input count:', error);
+      }
     } catch (error) {
       console.error('Error submitting/updating input:', error);
       setSubmitInputError(error.message || `Failed to ${editingInput ? 'update' : 'submit'} input. Please try again.`);
@@ -402,6 +411,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           groupedInputs[groupKey] = {
             id: input.id,
             creator: input.creator_name || 'Unknown',
+            creator_username: input.creator_username || null,
+            creator_email: input.creator_email || null,
             createdAt: input.created_at,
             category: selectedCategory,
             inputs: []
@@ -431,6 +442,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         return {
           id: group.id,
           creator: group.creator,
+          creator_username: group.creator_username,
+          creator_email: group.creator_email,
           type: allTypes,
           createdAt: group.createdAt,
           category: group.category,
@@ -439,6 +452,14 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
       });
       
       setInputs(mappedInputs);
+      
+      // Refresh input count
+      try {
+        const count = await getCommunityInputsCount(community.id);
+        setInputCount(count);
+      } catch (error) {
+        console.error('Error refreshing input count:', error);
+      }
     } catch (error) {
       console.error('Error deleting input:', error);
       setDeleteInputError(error.message || 'Failed to delete input. Please try again.');
@@ -460,26 +481,9 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     return foundTab || communityTabs[0];
   }, [communityTabs, selectedCategory]);
 
-  const getAvailableInputTypes = () => {
-    if (!selectedTab) {
-      return [];
-    }
-    const inputTypes = selectedTab?.inputTypes || selectedTab?.input_types || [];
-    if (Array.isArray(inputTypes) && inputTypes.length > 0) {
-      return inputTypes.map(inputType => ({
-        value: inputType.type === 'free text' ? 'freeText' : 
-               inputType.type === 'dropdown list' ? 'dropdownList' : 
-               inputType.type === 'multiple select' ? 'multipleSelect' : inputType.type,
-        label: inputType.name || inputType.type,
-        config: inputType
-      }));
-    }
-    return [];
-  };
 
   const handleCategoryChange = (categoryId) => {
     setSelectedCategory(categoryId);
-    setTypeFilter('all');
   };
 
   useEffect(() => {
@@ -495,6 +499,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
               description: fullCommunity.description,
               creator: fullCommunity.creator_name,
               creator_id: fullCommunity.creator_id,
+              creator_username: fullCommunity.creator_username,
+              creator_email: fullCommunity.creator_email,
               createdAt: fullCommunity.created_at,
               updatedAt: fullCommunity.updated_at,
               tabs: fullCommunity.tabs || [],
@@ -534,6 +540,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             groupedInputs[groupKey] = {
               id: input.id,
               creator: input.creator_name || 'Unknown',
+              creator_username: input.creator_username || null,
+              creator_email: input.creator_email || null,
               createdAt: input.created_at,
               category: selectedCategory,
               inputs: []
@@ -563,6 +571,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           return {
             id: group.id,
             creator: group.creator,
+            creator_username: group.creator_username,
+            creator_email: group.creator_email,
             type: allTypes,
             createdAt: group.createdAt,
             category: group.category,
@@ -581,6 +591,26 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
 
     fetchInputs();
   }, [community?.id, selectedCategory]);
+
+  useEffect(() => {
+    const fetchInputCount = async () => {
+      if (!community?.id) {
+        setInputCount(0);
+        return;
+      }
+
+      try {
+        const count = await getCommunityInputsCount(community.id);
+        setInputCount(count);
+      } catch (error) {
+        console.error('Error fetching input count:', error);
+        setInputCount(0);
+      }
+    };
+
+    fetchInputCount();
+  }, [community?.id]);
+
 
   useEffect(() => {
     console.log('Community prop changed:', community);
@@ -681,6 +711,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         description: updatedCommunity.description,
         creator: updatedCommunity.creator_name,
         creator_id: updatedCommunity.creator_id,
+        creator_username: updatedCommunity.creator_username,
+        creator_email: updatedCommunity.creator_email,
         createdAt: updatedCommunity.created_at,
         updatedAt: updatedCommunity.updated_at,
         tabs: updatedCommunity.tabs || community?.tabs || [],
@@ -713,26 +745,51 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             <dl className="meta-list">
               <div>
                 <dt>Community owner</dt>
-                <dd>{communityOwner}</dd>
+                <dd>
+                  {creatorUsername ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onSelectUser && creatorUsername) {
+                          onSelectUser({ username: creatorUsername });
+                        }
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        color: '#2563eb',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        fontSize: 'inherit',
+                        fontWeight: 'inherit'
+                      }}
+                    >
+                      {communityOwner}
+                    </button>
+                  ) : (
+                    communityOwner
+                  )}
+                </dd>
               </div>
               <div>
                 <dt>Created at</dt>
                 <dd>{createdAt}</dd>
               </div>
               <div>
-                <dt>Number of comments</dt>
-                <dd>{commentCount}</dd>
+                <dt>Number of inputs</dt>
+                <dd>{inputCount}</dd>
               </div>
             </dl>
             {isCreator && (
-              <>
+              <div className="community-actions">
                 <button
                   className="update-community-button"
                   onClick={handleUpdateClick}
                   aria-label="Update community"
                   title="Update this community"
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                   </svg>
@@ -744,13 +801,13 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                   aria-label="Delete community"
                   title="Delete this community"
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="3 6 5 6 21 6" />
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                   </svg>
                   Delete Community
                 </button>
-              </>
+              </div>
             )}
           </aside>
         </div>
@@ -830,21 +887,6 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                       Sort {getSortIndicator(sortConfig.column, 'creator', sortConfig.direction)}
                     </button>
                   </div>
-                  <div className="header-cell type">
-                    <span>Type</span>
-                    <select
-                      className="header-select"
-                      value={typeFilter}
-                      onChange={(event) => setTypeFilter(event.target.value)}
-                    >
-                      <option value="all">All types</option>
-                      {getAvailableInputTypes().map((inputType) => (
-                        <option key={inputType.value} value={inputType.label}>
-                          {inputType.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                   <div className="header-cell created-at">
                     <span>Created at</span>
                     <button
@@ -876,8 +918,74 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                       );
                       return (
                         <div className="inputs-table-row" key={input.id}>
-                          <div className="cell created-by">{input.creator || 'Unknown'}</div>
-                          <div className="cell type">{input.type || 'N/A'}</div>
+                          <div className="cell created-by">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!onSelectUser) return;
+                                
+                                // If we have creator_username, use it directly
+                                if (input.creator_username) {
+                                  try {
+                                    const user = await getUserByUsername(input.creator_username);
+                                    if (user) {
+                                      onSelectUser(user);
+                                      return;
+                                    }
+                                  } catch (error) {
+                                    console.log('Could not find user by username:', input.creator_username);
+                                  }
+                                }
+                                
+                                // Fallback: Try to find user by creator name (could be full name or username)
+                                try {
+                                  // First try as username
+                                  const user = await getUserByUsername(input.creator);
+                                  if (user) {
+                                    onSelectUser(user);
+                                    return;
+                                  }
+                                } catch (error) {
+                                  // If not found as username, try searching by name
+                                  try {
+                                    const users = await getUsersByName(input.creator);
+                                    if (users && users.length > 0) {
+                                      // Use the first match
+                                      const user = users[0];
+                                      let dateOfBirth = null;
+                                      if (user.date_of_birth) {
+                                        dateOfBirth = String(user.date_of_birth).split('T')[0];
+                                      }
+                                      onSelectUser({
+                                        id: user.id,
+                                        username: user.username,
+                                        email: user.email,
+                                        name: user.name,
+                                        surname: user.surname,
+                                        profession: user.profession,
+                                        dateOfBirth: dateOfBirth,
+                                      });
+                                      return;
+                                    }
+                                  } catch (searchError) {
+                                    console.log('Could not find user:', input.creator);
+                                  }
+                                }
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                padding: 0,
+                                color: '#2563eb',
+                                cursor: 'pointer',
+                                textDecoration: 'underline',
+                                fontSize: 'inherit',
+                                fontWeight: 'inherit'
+                              }}
+                            >
+                              {input.creator || 'Unknown'}
+                            </button>
+                          </div>
                           <div className="cell created-at">
                             {formatDate(input.createdAt)}
                           </div>
@@ -962,8 +1070,84 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             <dl className="details-modal-content">
               <div>
                 <dt>Created by</dt>
-                <dd>{detailsItem.creator}</dd>
+                <dd>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!onSelectUser) return;
+                      
+                      // If we have creator_username, use it directly
+                      if (detailsItem.creator_username) {
+                        try {
+                          const user = await getUserByUsername(detailsItem.creator_username);
+                          if (user) {
+                            onSelectUser(user);
+                            setDetailsItem(null); // Close dialog
+                            return;
+                          }
+                        } catch (error) {
+                          console.log('Could not find user by username:', detailsItem.creator_username);
+                        }
+                      }
+                      
+                      // Fallback: Try to find user by creator name (could be full name or username)
+                      try {
+                        // First try as username
+                        const user = await getUserByUsername(detailsItem.creator);
+                        if (user) {
+                          onSelectUser(user);
+                          setDetailsItem(null); // Close dialog
+                          return;
+                        }
+                      } catch (error) {
+                        // If not found as username, try searching by name
+                        try {
+                          const users = await getUsersByName(detailsItem.creator);
+                          if (users && users.length > 0) {
+                            // Use the first match
+                            const user = users[0];
+                            let dateOfBirth = null;
+                            if (user.date_of_birth) {
+                              dateOfBirth = String(user.date_of_birth).split('T')[0];
+                            }
+                            onSelectUser({
+                              id: user.id,
+                              username: user.username,
+                              email: user.email,
+                              name: user.name,
+                              surname: user.surname,
+                              profession: user.profession,
+                              dateOfBirth: dateOfBirth,
+                            });
+                            setDetailsItem(null); // Close dialog
+                            return;
+                          }
+                        } catch (searchError) {
+                          console.log('Could not find user:', detailsItem.creator);
+                        }
+                      }
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      color: '#2563eb',
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      fontSize: 'inherit',
+                      fontWeight: 'inherit'
+                    }}
+                  >
+                    {detailsItem.creator}
+                  </button>
+                </dd>
               </div>
+              {isCreator && detailsItem.creator_email && (
+                <div>
+                  <dt>Contact Information</dt>
+                  <dd>{detailsItem.creator_email}</dd>
+                </div>
+              )}
               <div>
                 <dt>Type</dt>
                 <dd>{detailsItem.type}</dd>

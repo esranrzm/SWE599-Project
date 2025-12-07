@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func, distinct
 from typing import List, Optional, Dict, Any
 import logging
 from datetime import datetime, timedelta
@@ -116,9 +117,23 @@ async def create_community(
             .filter(Community.id == new_community.id)\
             .first()
         
+        # Create response dict with creator info
+        community_dict = {
+            "id": community_with_tabs.id,
+            "title": community_with_tabs.title,
+            "description": community_with_tabs.description,
+            "creator_id": community_with_tabs.creator_id,
+            "creator_name": community_with_tabs.creator_name,
+            "creator_username": current_user.username,
+            "creator_email": current_user.email,
+            "tabs": community_with_tabs.tabs,
+            "created_at": community_with_tabs.created_at,
+            "updated_at": community_with_tabs.updated_at,
+        }
+        
         logger.info(f"Community created: {new_community.id} by user {current_user.id}")
         
-        return CommunityResponse.model_validate(community_with_tabs)
+        return CommunityResponse.model_validate(community_dict)
         
     except Exception as e:
         db.rollback()
@@ -153,7 +168,25 @@ async def get_all_communities(
             .limit(limit)\
             .all()
         
-        return [CommunityResponse.model_validate(community) for community in communities]
+        # Fetch creator info for each community
+        result = []
+        for community in communities:
+            creator_user = db.query(User).filter(User.id == community.creator_id).first()
+            community_dict = {
+                "id": community.id,
+                "title": community.title,
+                "description": community.description,
+                "creator_id": community.creator_id,
+                "creator_name": community.creator_name,
+                "creator_username": creator_user.username if creator_user else None,
+                "creator_email": creator_user.email if creator_user else None,
+                "tabs": community.tabs,
+                "created_at": community.created_at,
+                "updated_at": community.updated_at,
+            }
+            result.append(CommunityResponse.model_validate(community_dict))
+        
+        return result
         
     except Exception as e:
         logger.error(f"Error retrieving communities: {str(e)}")
@@ -189,7 +222,24 @@ async def get_my_communities(
             .limit(limit)\
             .all()
         
-        return [CommunityResponse.model_validate(community) for community in communities]
+        # Create response with creator info
+        result = []
+        for community in communities:
+            community_dict = {
+                "id": community.id,
+                "title": community.title,
+                "description": community.description,
+                "creator_id": community.creator_id,
+                "creator_name": community.creator_name,
+                "creator_username": current_user.username,
+                "creator_email": current_user.email,
+                "tabs": community.tabs,
+                "created_at": community.created_at,
+                "updated_at": community.updated_at,
+            }
+            result.append(CommunityResponse.model_validate(community_dict))
+        
+        return result
         
     except Exception as e:
         logger.error(f"Error retrieving user's communities: {str(e)}")
@@ -225,13 +275,114 @@ async def get_others_communities(
             .limit(limit)\
             .all()
         
-        return [CommunityResponse.model_validate(community) for community in communities]
+        # Fetch creator info for each community
+        result = []
+        for community in communities:
+            creator_user = db.query(User).filter(User.id == community.creator_id).first()
+            community_dict = {
+                "id": community.id,
+                "title": community.title,
+                "description": community.description,
+                "creator_id": community.creator_id,
+                "creator_name": community.creator_name,
+                "creator_username": creator_user.username if creator_user else None,
+                "creator_email": creator_user.email if creator_user else None,
+                "tabs": community.tabs,
+                "created_at": community.created_at,
+                "updated_at": community.updated_at,
+            }
+            result.append(CommunityResponse.model_validate(community_dict))
+        
+        return result
         
     except Exception as e:
         logger.error(f"Error retrieving others' communities: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while retrieving others' communities: {str(e)}",
+        )
+
+
+@router.get("/user/{user_id}/created", response_model=List[CommunityResponse], status_code=status.HTTP_200_OK)
+async def get_user_communities(
+    user_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """
+    Get all communities created by a specific user.
+    
+    Public endpoint - no authentication required.
+    
+    - **user_id**: The ID of the user whose communities to retrieve
+    - **skip**: Number of communities to skip (for pagination)
+    - **limit**: Maximum number of communities to return (default: 100, max: 1000)
+    
+    Returns a list of communities created by the user.
+    """
+    logger.info(f"GET /user/{user_id}/created called with skip={skip}, limit={limit}")
+    try:
+        # Verify user exists
+        logger.info(f"Verifying user with ID {user_id} exists...")
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logger.warning(f"User with ID {user_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User with ID {user_id} not found",
+            )
+        
+        logger.info(f"User found: {user.username}")
+        
+        # Limit the maximum results to prevent abuse
+        if limit > 1000:
+            limit = 1000
+        if skip < 0:
+            skip = 0
+        if limit < 1:
+            limit = 100
+        
+        logger.info(f"Querying database for communities created by user {user_id}...")
+        communities = db.query(Community)\
+            .options(
+                joinedload(Community.tabs)
+            )\
+            .filter(Community.creator_id == user_id)\
+            .order_by(Community.created_at.desc())\
+            .offset(skip)\
+            .limit(limit)\
+            .all()
+        
+        logger.info(f"Found {len(communities)} communities for user {user_id}")
+        # Create response with creator info
+        result = []
+        for community in communities:
+            community_dict = {
+                "id": community.id,
+                "title": community.title,
+                "description": community.description,
+                "creator_id": community.creator_id,
+                "creator_name": community.creator_name,
+                "creator_username": user.username,
+                "creator_email": user.email,
+                "tabs": community.tabs,
+                "created_at": community.created_at,
+                "updated_at": community.updated_at,
+            }
+            result.append(CommunityResponse.model_validate(community_dict))
+        logger.info(f"Returning {len(result)} communities")
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving communities for user {user_id}: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while retrieving user's communities: {str(e)}",
         )
 
 
@@ -254,7 +405,24 @@ async def get_community_by_id(
                 detail=f"Community with ID {community_id} not found",
             )
         
-        return CommunityResponse.model_validate(community)
+        # Fetch creator user to get email and username
+        creator_user = db.query(User).filter(User.id == community.creator_id).first()
+        
+        # Create response dict with additional creator info
+        community_dict = {
+            "id": community.id,
+            "title": community.title,
+            "description": community.description,
+            "creator_id": community.creator_id,
+            "creator_name": community.creator_name,
+            "creator_username": creator_user.username if creator_user else None,
+            "creator_email": creator_user.email if creator_user else None,
+            "tabs": community.tabs,
+            "created_at": community.created_at,
+            "updated_at": community.updated_at,
+        }
+        
+        return CommunityResponse.model_validate(community_dict)
         
     except HTTPException:
         raise
@@ -303,9 +471,26 @@ async def update_community(
             .filter(Community.id == community_id)\
             .first()
         
+        # Fetch creator user to get email and username
+        creator_user = db.query(User).filter(User.id == updated_community.creator_id).first()
+        
+        # Create response dict with creator info
+        community_dict = {
+            "id": updated_community.id,
+            "title": updated_community.title,
+            "description": updated_community.description,
+            "creator_id": updated_community.creator_id,
+            "creator_name": updated_community.creator_name,
+            "creator_username": creator_user.username if creator_user else None,
+            "creator_email": creator_user.email if creator_user else None,
+            "tabs": updated_community.tabs,
+            "created_at": updated_community.created_at,
+            "updated_at": updated_community.updated_at,
+        }
+        
         logger.info(f"Community updated: {community_id} by user {current_user.id}")
         
-        return CommunityResponse.model_validate(updated_community)
+        return CommunityResponse.model_validate(community_dict)
         
     except HTTPException:
         raise
@@ -444,6 +629,59 @@ async def submit_community_input(
         )
 
 
+@router.get("/{community_id}/inputs/count", status_code=status.HTTP_200_OK)
+async def get_community_inputs_count(
+    community_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get the total count of input submissions for a community across all tabs.
+    
+    Public endpoint - no authentication required.
+    
+    - **community_id**: The ID of the community
+    
+    Returns the total number of input submissions (grouped by creator and timestamp).
+    """
+    try:
+        # Verify the community exists
+        community = db.query(Community).filter(Community.id == community_id).first()
+        if not community:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Community with ID {community_id} not found",
+            )
+        
+        # Count distinct input submissions
+        # Inputs are grouped by creator_name and created_at (rounded to seconds)
+        # We use a subquery to get distinct combinations, then count them
+        from sqlalchemy import distinct
+        
+        # Create a subquery to get distinct combinations of creator_name and rounded timestamp
+        subquery = db.query(
+            InputType.creator_name,
+            func.date_trunc('second', InputType.created_at).label('created_at_rounded')
+        ).join(CommunityTab).filter(
+            CommunityTab.community_id == community_id
+        ).distinct().subquery()
+        
+        # Count the distinct combinations
+        count = db.query(func.count()).select_from(subquery).scalar()
+        
+        return {"count": count or 0}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving community inputs count: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while retrieving community inputs count: {str(e)}",
+        )
+
+
 @router.get("/{community_id}/inputs", response_model=List[InputTypeResponse], status_code=status.HTTP_200_OK)
 async def get_community_inputs(
     community_id: int,
@@ -484,7 +722,52 @@ async def get_community_inputs(
             joinedload(InputType.items)
         ).order_by(InputType.created_at.desc()).all()
         
-        return [InputTypeResponse.model_validate(input_type) for input_type in inputs]
+        # Build response with creator email and username
+        result = []
+        for input_type in inputs:
+            # Try to find the creator user by name
+            creator_user = None
+            if input_type.creator_name:
+                # Try to find user by matching name and surname
+                name_parts = input_type.creator_name.strip().split()
+                if len(name_parts) >= 2:
+                    # Try exact match first
+                    creator_user = db.query(User).filter(
+                        User.name == name_parts[0],
+                        User.surname == " ".join(name_parts[1:])
+                    ).first()
+                    # If not found, try case-insensitive match
+                    if not creator_user:
+                        creator_user = db.query(User).filter(
+                            func.lower(User.name) == name_parts[0].lower(),
+                            func.lower(User.surname) == " ".join(name_parts[1:]).lower()
+                        ).first()
+                elif len(name_parts) == 1:
+                    # Single word - could be username or first name
+                    # Try as username first
+                    creator_user = db.query(User).filter(User.username == name_parts[0]).first()
+                    # If not found, try as first name
+                    if not creator_user:
+                        creator_user = db.query(User).filter(
+                            func.lower(User.name) == name_parts[0].lower()
+                        ).first()
+            
+            # Create response dict with creator info
+            input_dict = {
+                "id": input_type.id,
+                "type": input_type.type,
+                "name": input_type.name,
+                "creator_name": input_type.creator_name,
+                "creator_username": creator_user.username if creator_user else None,
+                "creator_email": creator_user.email if creator_user else None,
+                "display_order": input_type.display_order,
+                "items": input_type.items,
+                "created_at": input_type.created_at,
+                "updated_at": input_type.updated_at,
+            }
+            result.append(InputTypeResponse.model_validate(input_dict))
+        
+        return result
         
     except HTTPException:
         raise

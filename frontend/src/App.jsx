@@ -198,16 +198,18 @@ function App() {
       if (community?.id) {
         try {
           const fullCommunity = await getCommunityById(community.id);
-          const mappedCommunity = {
-            id: fullCommunity.id,
-            title: fullCommunity.title,
-            description: fullCommunity.description,
-            creator: fullCommunity.creator_name,
-            creator_id: fullCommunity.creator_id,
-            createdAt: fullCommunity.created_at,
-            updatedAt: fullCommunity.updated_at,
-            tabs: fullCommunity.tabs || [],
-          };
+            const mappedCommunity = {
+              id: fullCommunity.id,
+              title: fullCommunity.title,
+              description: fullCommunity.description,
+              creator: fullCommunity.creator_name,
+              creator_id: fullCommunity.creator_id,
+              creator_username: fullCommunity.creator_username,
+              creator_email: fullCommunity.creator_email,
+              createdAt: fullCommunity.created_at,
+              updatedAt: fullCommunity.updated_at,
+              tabs: fullCommunity.tabs || [],
+            };
           setSelectedCommunity(mappedCommunity);
         } catch (err) {
           console.error('Error fetching community:', err);
@@ -350,7 +352,7 @@ function App() {
       case 'profile':
         return <Profile user={userProfile} onSaveProfile={handleSaveProfile} onDeleteAccount={handleDeleteAccount} onPasswordUpdated={handlePasswordUpdated} />;
       case 'communityDetails':
-        return <CommunityDetails community={selectedCommunity} currentUser={userProfile} onDeleteSuccess={handleCommunityDeleted} onCommunityUpdated={handleCommunityUpdated} />
+        return <CommunityDetails community={selectedCommunity} currentUser={userProfile} onDeleteSuccess={handleCommunityDeleted} onCommunityUpdated={handleCommunityUpdated} onSelectUser={handleSelectUser} />
       case 'createCommunity':
         return <CreateCommunity onCommunityCreated={handleOpenCommunity} />
       case 'allUsers':
