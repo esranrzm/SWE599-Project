@@ -266,11 +266,37 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+.nested-card-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
 .nested-card-title {
   font-size: 0.9rem;
   font-weight: 600;
   color: #374151;
-  margin-bottom: 1rem;
+  margin: 0;
+  flex: 1;
+}
+
+.btn-add-items-at-once {
+  background: #6366f1;
+  color: #ffffff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-add-items-at-once:hover {
+  background: #4f46e5;
 }
 
 .nested-card-content {
@@ -754,6 +780,126 @@
   border: 1px solid #cfc;
 }
 
+/* Dialog Styles */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.dialog-content {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 2rem;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  animation: dialogSlideIn 0.3s ease;
+}
+
+@keyframes dialogSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dialog-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 1rem 0;
+}
+
+.dialog-description {
+  font-size: 0.9rem;
+  color: #6b7280;
+  margin: 0 0 1.5rem 0;
+  line-height: 1.6;
+}
+
+.dialog-input-group {
+  margin-bottom: 1.5rem;
+}
+
+.dialog-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: #ffffff;
+  resize: vertical;
+  min-height: 100px;
+  transition: border-color 0.2s ease;
+}
+
+.dialog-textarea:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.dialog-error-message {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.btn-dialog-cancel {
+  background: #6b7280;
+  color: #ffffff;
+  border: none;
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-dialog-cancel:hover {
+  background: #4b5563;
+}
+
+.btn-dialog-add {
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-dialog-add:hover {
+  background: #059669;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .create-community-card {
@@ -787,5 +933,18 @@
 
   .tab-form-row {
     flex-direction: column;
+  }
+
+  .nested-card-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .btn-add-items-at-once {
+    width: 100%;
+  }
+
+  .dialog-content {
+    padding: 1.5rem;
   }
 }

@@ -20,6 +20,11 @@ const CreateCommunity = ({ onCommunityCreated }) => {
   const [editingInputItemInputId, setEditingInputItemInputId] = useState(null);
   const [editingInputItemValue, setEditingInputItemValue] = useState('');
 
+  const [addItemsDialogOpen, setAddItemsDialogOpen] = useState(false);
+  const [addItemsDialogTabId, setAddItemsDialogTabId] = useState(null);
+  const [addItemsDialogInput, setAddItemsDialogInput] = useState('');
+  const [addItemsDialogError, setAddItemsDialogError] = useState('');
+
   const MAX_TITLE_LENGTH = 200;
   const MAX_DESCRIPTION_LENGTH = 500;
   const MAX_TABS = 10;
@@ -377,6 +382,63 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     return type;
   };
 
+  const handleOpenAddItemsDialog = (tabId) => {
+    setAddItemsDialogTabId(tabId);
+    setAddItemsDialogInput('');
+    setAddItemsDialogError('');
+    setAddItemsDialogOpen(true);
+  };
+
+  const handleCloseAddItemsDialog = () => {
+    setAddItemsDialogOpen(false);
+    setAddItemsDialogTabId(null);
+    setAddItemsDialogInput('');
+    setAddItemsDialogError('');
+  };
+
+  const validateItemsInput = (input) => {
+    if (!input.trim()) {
+      return { valid: false, error: 'Please enter at least one item.' };
+    }
+
+    const trimmed = input.trim();
+    if (trimmed.length === 0) {
+      return { valid: false, error: 'Please enter at least one item.' };
+    }
+    const items = trimmed.split(',').map(item => item.trim()).filter(item => item.length > 0);
+    if (items.length === 0) {
+      return { valid: false, error: 'Please enter at least one valid item.' };
+    }
+    return { valid: true, items };
+  };
+
+  const handleAddItemsAtOnce = () => {
+    if (!addItemsDialogTabId) return;
+
+    const validation = validateItemsInput(addItemsDialogInput);
+    if (!validation.valid) {
+      setAddItemsDialogError(validation.error);
+      return;
+    }
+
+    
+    const state = getInputState(addItemsDialogTabId);
+    const updatedItems = [...state.currentItems, ...validation.items];
+    updateInputState(addItemsDialogTabId, {
+      currentItems: updatedItems
+    });
+
+    // Close dialog
+    handleCloseAddItemsDialog();
+  };
+
+  const getSelectedInputTypeDisplay = (tabId) => {
+    const state = getInputState(tabId);
+    if (state.currentInputType === 'dropdown list') return 'Dropdown';
+    if (state.currentInputType === 'multiple select') return 'Multi-Select';
+    return state.currentInputType;
+  };
+
   return (
     <div className="create-community">
       <div className="create-community-card">
@@ -547,9 +609,18 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                           {/* Nested card for dropdown/multi-select */}
                           {showInputValueField(tab.id) && (
                             <div className="nested-input-card">
-                              <h4 className="nested-card-title">
-                                Add input field for input "{inputState.currentInputName || '[input title]'}"
-                              </h4>
+                              <div className="nested-card-title-row">
+                                <h4 className="nested-card-title">
+                                  Add input field for input "{inputState.currentInputName || '[input title]'}"
+                                </h4>
+                                <button
+                                  className="btn-add-items-at-once"
+                                  onClick={() => handleOpenAddItemsDialog(tab.id)}
+                                  title="Add multiple items at once"
+                                >
+                                  add items at once
+                                </button>
+                              </div>
                               <div className="nested-card-content">
                                 <div className="nested-input-row">
                                   <div className="input-field-group">
@@ -776,6 +847,51 @@ const CreateCommunity = ({ onCommunityCreated }) => {
           </button>
         </div>
       </div>
+
+      {/* Add Items at Once Dialog */}
+      {addItemsDialogOpen && (
+        <div className="dialog-overlay" onClick={handleCloseAddItemsDialog}>
+          <div className="dialog-content" onClick={(e) => e.stopPropagation()}>
+            <h3 className="dialog-title">
+              Configure {getSelectedInputTypeDisplay(addItemsDialogTabId)} items at once
+            </h3>
+            <p className="dialog-description">
+              Instead of adding one by one you can add all {getSelectedInputTypeDisplay(addItemsDialogTabId).toLowerCase()} options at once from here. You need to enter the following format "option1, option2, ...".
+            </p>
+            <div className="dialog-input-group">
+              <textarea
+                className="dialog-textarea"
+                value={addItemsDialogInput}
+                onChange={(e) => {
+                  setAddItemsDialogInput(e.target.value);
+                  setAddItemsDialogError('');
+                }}
+                placeholder='Please enter the items you want to add in "item1, item2, item3, ..." format'
+                rows={4}
+              />
+              {addItemsDialogError && (
+                <div className="dialog-error-message">
+                  {addItemsDialogError}
+                </div>
+              )}
+            </div>
+            <div className="dialog-actions">
+              <button
+                className="btn-dialog-cancel"
+                onClick={handleCloseAddItemsDialog}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-dialog-add"
+                onClick={handleAddItemsAtOnce}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
