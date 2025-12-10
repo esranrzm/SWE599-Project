@@ -26,7 +26,7 @@ const createId = () => {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunityUpdated, onSelectUser }) => {
+const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunityUpdated, onSelectUser, onNavigateToUpdate }) => {
   const communityTabs = useMemo(() => {
     if (community?.tabs && Array.isArray(community.tabs)) {
       console.log('Using tabs from API:', community.tabs);
@@ -785,7 +785,11 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
               <div className="community-actions">
                 <button
                   className="update-community-button"
-                  onClick={handleUpdateClick}
+                  onClick={() => {
+                    if (onNavigateToUpdate) {
+                      onNavigateToUpdate(community);
+                    }
+                  }}
                   aria-label="Update community"
                   title="Update this community"
                 >
