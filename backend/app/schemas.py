@@ -76,6 +76,7 @@ class InputTypeItemResponse(BaseModel):
 
 # Input Type Schemas
 class InputTypeCreate(BaseModel):
+    id: Optional[int] = None  # None for new inputs, number for existing inputs (original input_id from tab_form_structure)
     type: str = Field(..., min_length=1, max_length=50)
     name: str = Field(..., min_length=1, max_length=200)
     items: List[InputTypeItemCreate] = Field(default_factory=list)
@@ -133,6 +134,26 @@ class CommunityTabCreate(BaseModel):
     class Config:
         populate_by_name = True
 
+
+class CommunityTabUpdate(BaseModel):
+    id: Optional[int] = None  # None for new tabs, number for existing tabs
+    name: str = Field(..., min_length=1, max_length=200)
+    color: str = Field(..., min_length=7, max_length=7)
+    description: Optional[str] = Field(None, max_length=1000)
+    inputTypes: List[InputTypeCreate] = Field(default_factory=list, alias="inputTypes")
+    display_order: int = Field(default=0, ge=0)
+
+    @field_validator('color')
+    @classmethod
+    def validate_color(cls, v):
+        # Validate hex color code format: #RRGGBB
+        if not re.match(r'^#[0-9A-Fa-f]{6}$', v):
+            raise ValueError("Color must be a valid hex color code (e.g., #f97316)")
+        return v
+
+    class Config:
+        populate_by_name = True
+
 class CommunityTabResponse(BaseModel):
     id: int
     name: str
@@ -164,6 +185,12 @@ class CommunityCreate(BaseModel):
 class CommunityUpdate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: str = Field(..., min_length=1, max_length=500)
+
+
+class CommunityUpdateWithTabs(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(..., min_length=1, max_length=500)
+    tabs: Optional[List[CommunityTabUpdate]] = Field(default=None, max_length=10)
 
 
 class CommunityResponse(BaseModel):

@@ -5,6 +5,7 @@ import Registration from './components/auth/Registration'
 import MainScreen from './components/community/MainScreen'
 import CommunityDetails from './components/community/CommunityDetails'
 import CreateCommunity from './components/community/CreateCommunity'
+import UpdateCommunity from './components/community/UpdateCommunity'
 import Profile from './components/profile/Profile';
 import MyCommunities from './components/community/MyCommunities';
 import AllUsers from './components/AllUsers';
@@ -83,6 +84,32 @@ function App() {
       }
       if (path.startsWith('/community/create')) {
         setCurrentView('createCommunity')
+        return
+      }
+      if (path.startsWith('/community/') && path.includes('/update') && !path.startsWith('/community/create')) {
+        const idStr = path.replace('/community/', '').replace('/update', '')
+        const id = parseInt(idStr, 10)
+        setCurrentView('updateCommunity')
+        const fetchCommunity = async () => {
+          try {
+            const community = await getCommunityById(id);
+            const mappedCommunity = {
+              id: community.id,
+              title: community.title,
+              description: community.description,
+              creator: community.creator_name,
+              creator_id: community.creator_id,
+              createdAt: community.created_at,
+              updatedAt: community.updated_at,
+              tabs: community.tabs || [],
+            };
+            setSelectedCommunity(mappedCommunity);
+          } catch (err) {
+            console.error('Error fetching community:', err);
+            setSelectedCommunity({ id, title: `Community ${id}`, description: 'No description provided.', tabs: [] });
+          }
+        };
+        fetchCommunity();
         return
       }
       if (path.startsWith('/community/') && !path.startsWith('/community/create')) {
@@ -220,8 +247,15 @@ function App() {
       }
     };
     
+    // Only push to history if we're not already on this community's details page
+    const currentPath = window.location.pathname;
+    const targetPath = `/community/${community?.id || ''}`;
+    
+    if (currentPath !== targetPath) {
+      window.history.pushState({ view: 'communityDetails', id: community?.id }, '', targetPath);
+    }
+    
     setCurrentView('communityDetails');
-    window.history.pushState({ view: 'communityDetails', id: community?.id }, '', `/community/${community?.id || ''}`);
     fetchFullCommunity();
   }
 
@@ -325,6 +359,46 @@ function App() {
     }, 5000);
   };
 
+  const handleNavigateToUpdate = (community) => {
+    setSelectedCommunity(community);
+    setCurrentView('updateCommunity');
+    // Push to history - browser back button will go back to community details
+    window.history.pushState({ view: 'updateCommunity', id: community?.id }, '', `/community/${community?.id}/update`);
+  };
+
+
+  const handleUpdateSuccess = () => {
+    if (selectedCommunity?.id) {
+      const fetchCommunity = async () => {
+        try {
+          const fullCommunity = await getCommunityById(selectedCommunity.id);
+          const mappedCommunity = {
+            id: fullCommunity.id,
+            title: fullCommunity.title,
+            description: fullCommunity.description,
+            creator: fullCommunity.creator_name,
+            creator_id: fullCommunity.creator_id,
+            creator_username: fullCommunity.creator_username,
+            creator_email: fullCommunity.creator_email,
+            createdAt: fullCommunity.created_at,
+            updatedAt: fullCommunity.updated_at,
+            tabs: fullCommunity.tabs || [],
+          };
+          setSelectedCommunity(mappedCommunity);
+          setSuccessMessage(`Community "${mappedCommunity.title}" has been updated successfully.`);
+          setTimeout(() => {
+            setSuccessMessage(null);
+          }, 5000);
+        } catch (err) {
+          console.error('Error fetching community:', err);
+        }
+      };
+      fetchCommunity();
+    }
+    setCurrentView('communityDetails');
+    window.history.replaceState({ view: 'communityDetails', id: selectedCommunity?.id }, '', `/community/${selectedCommunity?.id || ''}`);
+  };
+
   const renderCurrentView = () => {
     if (isLoading) {
       return (
@@ -352,7 +426,9 @@ function App() {
       case 'profile':
         return <Profile user={userProfile} onSaveProfile={handleSaveProfile} onDeleteAccount={handleDeleteAccount} onPasswordUpdated={handlePasswordUpdated} />;
       case 'communityDetails':
-        return <CommunityDetails community={selectedCommunity} currentUser={userProfile} onDeleteSuccess={handleCommunityDeleted} onCommunityUpdated={handleCommunityUpdated} onSelectUser={handleSelectUser} />
+        return <CommunityDetails community={selectedCommunity} currentUser={userProfile} onDeleteSuccess={handleCommunityDeleted} onCommunityUpdated={handleCommunityUpdated} onSelectUser={handleSelectUser} onNavigateToUpdate={handleNavigateToUpdate} />
+      case 'updateCommunity':
+        return <UpdateCommunity community={selectedCommunity} onUpdateSuccess={handleUpdateSuccess} />
       case 'createCommunity':
         return <CreateCommunity onCommunityCreated={handleOpenCommunity} />
       case 'allUsers':

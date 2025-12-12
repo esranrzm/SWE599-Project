@@ -377,6 +377,11 @@
   background: #f3f4f6;
   border-radius: 6px;
   border: 1px solid #e5e7eb;
+  gap: 0.5rem;
+}
+
+.item-card > span {
+  flex: 1;
 }
 
 .item-card span {
@@ -626,6 +631,20 @@
   background: #e5e7eb;
   padding: 0.375rem 0.75rem;
   border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.item-tag-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.item-tag-name {
+  flex: 1;
 }
 
 /* Tab Creation Form */

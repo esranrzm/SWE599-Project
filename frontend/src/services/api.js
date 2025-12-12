@@ -502,6 +502,40 @@ export const updateCommunity = async (communityId, communityData) => {
   }
 };
 
+export const updateCommunityWithTabs = async (communityId, communityData) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/communities/${communityId}/update-full`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: communityData.title,
+        description: communityData.description,
+        tabs: communityData.tabs || null
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to update community');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Update community with tabs error:', error);
+    throw error;
+  }
+};
+
 
 export const getCommunityInputs = async (communityId, tabId = null) => {
   try {
