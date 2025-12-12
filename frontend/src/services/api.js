@@ -914,3 +914,140 @@ export const getUserCommunities = async (userId, options = {}) => {
 };
 
 
+// Admin API functions
+export const getAdminStats = async () => {
+  try {
+    const token = getToken();
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/admin/stats`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch admin stats');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get admin stats error:', error);
+    throw error;
+  }
+};
+
+export const getAllCommunitiesAdmin = async () => {
+  try {
+    const token = getToken();
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/admin/communities`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch communities');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get all communities admin error:', error);
+    throw error;
+  }
+};
+
+export const getAllUsersAdmin = async () => {
+  try {
+    const token = getToken();
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/admin/users`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch users');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get all users admin error:', error);
+    throw error;
+  }
+};
+
+export const deleteUserAdmin = async (userId) => {
+  try {
+    const token = getToken();
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to delete user');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Delete user admin error:', error);
+    throw error;
+  }
+};
+
+export const getAllTabsAdmin = async () => {
+  try {
+    const token = getToken();
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/admin/tabs`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch tabs');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get all tabs admin error:', error);
+    throw error;
+  }
+};
+
+

@@ -53,10 +53,13 @@ const Login = ({ onNavigateToRegister, onLogin }) => {
         
         storeToken(response.access_token);
         
+        // Check if user is admin based on username
+        const isAdmin = response.user && response.user.username === 'admin';
+        
         if (response.user) {
-          onLogin(response.user);
+          onLogin(response.user, isAdmin);
         } else {
-          onLogin();
+          onLogin(null, isAdmin);
         }
       } catch (error) {
         setApiError(error.message || 'Invalid username or password');
