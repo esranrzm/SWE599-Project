@@ -870,7 +870,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             <div className="inputs-table-wrapper">
               <div className="inputs-table-header-actions">
                 <h2 className="inputs-table-title">Community Inputs</h2>
-                {selectedTab && hasAdminPrivileges && (
+                {selectedTab && currentUser && (
                   <button
                     type="button"
                     className="add-input-button"
