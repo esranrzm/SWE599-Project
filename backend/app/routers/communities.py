@@ -439,11 +439,12 @@ async def update_community(
                 detail=f"Community with ID {community_id} not found",
             )
         
-        # Check if the current user is the creator
-        if community.creator_id != current_user.id:
+        # Check if the current user is the creator or admin
+        is_admin = current_user.username == "admin"
+        if community.creator_id != current_user.id and not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to update this community. Only the creator can update it.",
+                detail="You do not have permission to update this community. Only the creator or admin can update it.",
             )
         
         # Update community fields
@@ -452,7 +453,6 @@ async def update_community(
         
         db.commit()
         
-        # Eager load tabs for response (no need to load input_types since we use tab_form_structure)
         updated_community = db.query(Community)\
             .options(
                 joinedload(Community.tabs)
@@ -460,10 +460,8 @@ async def update_community(
             .filter(Community.id == community_id)\
             .first()
         
-        # Fetch creator user to get email and username
         creator_user = db.query(User).filter(User.id == updated_community.creator_id).first()
         
-        # Create response dict with creator info
         community_dict = {
             "id": updated_community.id,
             "title": updated_community.title,
@@ -508,11 +506,11 @@ async def update_community_full(
                 detail=f"Community with ID {community_id} not found",
             )
         
-        # Check if the current user is the creator
-        if community.creator_id != current_user.id:
+        is_admin = current_user.username == "admin"
+        if community.creator_id != current_user.id and not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to update this community. Only the creator can update it.",
+                detail="You do not have permission to update this community. Only the creator or admin can update it.",
             )
         
         # Update community fields
@@ -527,15 +525,12 @@ async def update_community_full(
         
         # Process tabs
         if community_data.tabs is not None:
-            # Get IDs of tabs that should exist after update
             new_tab_ids = {tab.id for tab in community_data.tabs if tab.id is not None}
             
-            # Delete tabs that are no longer in the update
             tabs_to_delete = existing_tab_ids - new_tab_ids
             for tab_id in tabs_to_delete:
                 tab_to_delete = db.query(CommunityTab).filter(CommunityTab.id == tab_id).first()
                 if tab_to_delete:
-                    # Cascade delete will handle input_types and input_type_items
                     db.delete(tab_to_delete)
             
             # Update or create tabs
@@ -549,26 +544,20 @@ async def update_community_full(
                         existing_tab.description = tab_data.description
                         existing_tab.display_order = tab_data.display_order if tab_data.display_order else tab_order
                         
-                        # Generate new tab_form_structure
                         tab_form_structure = generate_tab_form_structure(tab_data)
                         existing_tab.tab_form_structure = tab_form_structure
                         
-                        # Handle input name updates for existing user submissions
-                        # Get old tab_form_structure to compare input names
                         old_tab_form = existing_tab.tab_form_structure or {}
                         old_inputs = old_tab_form.get('tab_inputs', [])
                         
-                        # Create mapping of old input_id to old name
                         old_input_map = {}
                         for inp in old_inputs:
                             input_id = inp.get('input_id')
                             if input_id is not None:
                                 old_input_map[input_id] = inp.get('input_title', '')
                         
-                        # Create mapping of new input_id to new name
                         new_input_map = {}
                         for idx, inp in enumerate(tab_data.inputTypes):
-                            # Use the original input_id if available, otherwise use index
                             input_id = inp.id if inp.id is not None else idx
                             new_input_map[input_id] = inp.name
                         
@@ -576,7 +565,6 @@ async def update_community_full(
                         for input_id, old_name in old_input_map.items():
                             new_name = new_input_map.get(input_id)
                             if new_name and new_name != old_name:
-                                # Update all InputType entries for this tab with the old name
                                 db.query(InputType).filter(
                                     InputType.tab_id == existing_tab.id,
                                     InputType.name == old_name
@@ -654,11 +642,12 @@ async def delete_community(
                 detail=f"Community with ID {community_id} not found",
             )
         
-        # Check if the current user is the creator
-        if community.creator_id != current_user.id:
+        # Check if the current user is the creator or admin
+        is_admin = current_user.username == "admin"
+        if community.creator_id != current_user.id and not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to delete this community. Only the creator can delete it.",
+                detail="You do not have permission to delete this community. Only the creator or admin can delete it.",
             )
         
         # Delete the community

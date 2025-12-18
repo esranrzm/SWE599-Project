@@ -6,7 +6,7 @@ import os
 import logging
 import time
 
-from app.routers import auth, communities
+from app.routers import auth, communities, admin
 from app.database import engine, Base
 
 load_dotenv()
@@ -50,6 +50,7 @@ app.add_middleware(LoggingMiddleware)
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(communities.router, prefix="/api/communities", tags=["communities"])
+app.include_router(admin.router, prefix="/api", tags=["admin"])
 
 @app.get("/")
 def root():

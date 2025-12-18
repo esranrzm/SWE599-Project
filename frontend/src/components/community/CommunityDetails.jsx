@@ -83,8 +83,10 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   );
   const [inputCount, setInputCount] = useState(0);
   
-  // Check if current user is the creator
+  // Check if current user is the creator or admin
+  const isAdmin = currentUser && currentUser.username === 'admin';
   const isCreator = currentUser && community && (currentUser.id === community.creator_id || currentUser.id === community.creatorId);
+  const hasAdminPrivileges = isCreator || isAdmin;
   
   // Get creator info from community
   const creatorEmail = community?.creator_email || null;
@@ -619,6 +621,18 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   }, [community, communityTabs]);
 
   useEffect(() => {
+    // If community has selectedTabId (from admin), use it
+    if (community?.selectedTabId) {
+      const tabExists = communityTabs.find(tab => 
+        tab.id === community.selectedTabId || 
+        String(tab.id) === String(community.selectedTabId)
+      );
+      if (tabExists) {
+        setSelectedCategory(community.selectedTabId);
+        return;
+      }
+    }
+    
     if (communityTabs.length > 0) {
       const tabExists = communityTabs.find(tab => 
         tab.id === selectedCategory || 
@@ -631,7 +645,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     } else if (selectedCategory !== null) {
       setSelectedCategory(null);
     }
-  }, [communityTabs, selectedCategory]);
+  }, [communityTabs, selectedCategory, community?.selectedTabId]);
 
   const handleDeleteClick = () => {
     setShowDeleteDialog(true);
@@ -781,7 +795,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                 <dd>{inputCount}</dd>
               </div>
             </dl>
-            {isCreator && (
+            {hasAdminPrivileges && (
               <div className="community-actions">
                 <button
                   className="update-community-button"
@@ -856,7 +870,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             <div className="inputs-table-wrapper">
               <div className="inputs-table-header-actions">
                 <h2 className="inputs-table-title">Community Inputs</h2>
-                {selectedTab && (
+                {selectedTab && currentUser && (
                   <button
                     type="button"
                     className="add-input-button"
@@ -916,10 +930,11 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                 ) : (
                   <>
                     {sortedAndFilteredInputs.map((input) => {
-                      const isCreator = currentUser && input.creator && (
+                      const isInputCreator = currentUser && input.creator && (
                         input.creator === currentUser.username ||
                         input.creator === `${currentUser.name} ${currentUser.surname}`.trim()
                       );
+                      const canEditInput = isInputCreator || isAdmin;
                       return (
                         <div className="inputs-table-row" key={input.id}>
                           <div className="cell created-by">
@@ -1003,7 +1018,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                             </button>
                           </div>
                           <div className="cell actions">
-                            {isCreator && (
+                            {canEditInput && (
                               <>
                                 <button
                                   type="button"
@@ -1029,7 +1044,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                                 </button>
                               </>
                             )}
-                            {!isCreator && <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>-</span>}
+                            {!canEditInput && <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>-</span>}
                           </div>
                         </div>
                       );
@@ -1146,7 +1161,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                   </button>
                 </dd>
               </div>
-              {isCreator && detailsItem.creator_email && (
+              {hasAdminPrivileges && detailsItem.creator_email && (
                 <div>
                   <dt>Contact Information</dt>
                   <dd>{detailsItem.creator_email}</dd>

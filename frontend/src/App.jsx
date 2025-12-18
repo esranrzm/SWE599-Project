@@ -10,6 +10,7 @@ import Profile from './components/profile/Profile';
 import MyCommunities from './components/community/MyCommunities';
 import AllUsers from './components/AllUsers';
 import OtherUserProfile from './components/OtherUserProfile';
+import AdminDashboard from './components/admin/AdminDashboard';
 import { logoutUser, removeToken, checkSession, getToken, getCommunityById } from './services/api';
 import './App.css'
 
@@ -35,6 +36,14 @@ function App() {
             setUserProfile(userData);
             setIsLoggedIn(true);
             
+            // Redirect admin to dashboard if on admin route
+            if (userData.username === 'admin') {
+              const path = window.location.pathname;
+              if (!path.startsWith('/admin')) {
+                setCurrentView('adminDashboard');
+                window.history.replaceState({ view: 'adminDashboard' }, '', '/admin');
+              }
+            }
           } else {
             console.log('No valid session found - navigating to login');
             setIsLoggedIn(false);
@@ -79,6 +88,12 @@ function App() {
       }
 
       if (path === '/main' || path === '/') {
+        // If admin, redirect to admin dashboard
+        if (userProfile && userProfile.username === 'admin') {
+          setCurrentView('adminDashboard')
+          window.history.replaceState({ view: 'adminDashboard' }, '', '/admin')
+          return
+        }
         setCurrentView('main')
         return
       }
@@ -171,6 +186,17 @@ function App() {
         setCurrentView('otherUserProfile')
         return
       }
+      if (path.startsWith('/admin')) {
+        // Check if user is admin
+        if (userProfile && userProfile.username === 'admin') {
+          setCurrentView('adminDashboard')
+          return
+        } else {
+          setCurrentView('main')
+          window.history.replaceState({ view: 'main' }, '', '/main')
+          return
+        }
+      }
       setCurrentView('main')
     }
 
@@ -195,15 +221,20 @@ function App() {
     window.history.pushState({ view: 'login' }, '', '/')
   }
 
-  const handleLogin = (userData = null) => {
+  const handleLogin = (userData = null, isAdmin = false) => {
     setIsLoggedIn(true)
     
     if (userData) {
       setUserProfile(userData)
     }
     
-    setCurrentView('main')
-    window.history.pushState({ view: 'main' }, '', '/main')
+    if (isAdmin) {
+      setCurrentView('adminDashboard')
+      window.history.pushState({ view: 'adminDashboard' }, '', '/admin')
+    } else {
+      setCurrentView('main')
+      window.history.pushState({ view: 'main' }, '', '/main')
+    }
   }
 
   const handleLogout = async () => {
@@ -220,7 +251,7 @@ function App() {
     window.history.replaceState({ view: 'login' }, '', '/')
   }
 
-  const handleOpenCommunity = (community) => {
+  const handleOpenCommunity = (community, selectedTabId = null) => {
     const fetchFullCommunity = async () => {
       if (community?.id) {
         try {
@@ -236,14 +267,15 @@ function App() {
               createdAt: fullCommunity.created_at,
               updatedAt: fullCommunity.updated_at,
               tabs: fullCommunity.tabs || [],
+              selectedTabId: selectedTabId, // Pass selected tab ID if provided
             };
           setSelectedCommunity(mappedCommunity);
         } catch (err) {
           console.error('Error fetching community:', err);
-          setSelectedCommunity(community);
+          setSelectedCommunity({ ...community, selectedTabId });
         }
       } else {
-        setSelectedCommunity(community);
+        setSelectedCommunity({ ...community, selectedTabId });
       }
     };
     
@@ -340,9 +372,16 @@ function App() {
       setSuccessMessage(null);
     }, 5000);
     
-    setCurrentView('main');
-    setSelectedCommunity(null);
-    window.history.pushState({ view: 'main' }, '', '/main');
+    // If admin, redirect to admin dashboard, otherwise to main
+    if (userProfile && userProfile.username === 'admin') {
+      setCurrentView('adminDashboard');
+      setSelectedCommunity(null);
+      window.history.pushState({ view: 'adminDashboard' }, '', '/admin');
+    } else {
+      setCurrentView('main');
+      setSelectedCommunity(null);
+      window.history.pushState({ view: 'main' }, '', '/main');
+    }
   };
 
   const handleCommunityUpdated = (updatedCommunity) => {
@@ -435,6 +474,8 @@ function App() {
         return <AllUsers onSelectUser={handleSelectUser} />
       case 'otherUserProfile':
         return <OtherUserProfile user={selectedUser} onOpenCommunity={handleOpenCommunity} />
+      case 'adminDashboard':
+        return <AdminDashboard onOpenCommunity={handleOpenCommunity} onLogout={handleLogout} onNavigateToHome={handleNavigateToHome} />
       default:
         return <Login onNavigateToRegister={handleNavigateToRegister} onLogin={handleLogin} />
     }
@@ -442,7 +483,7 @@ function App() {
 
   return (
     <div className="app">
-      <Header isLoggedIn={isLoggedIn} onLogout={handleLogout}
+      <Header isLoggedIn={isLoggedIn} isAdmin={userProfile && userProfile.username === 'admin'} onLogout={handleLogout}
         onCreateCommunity={handleCreateCommunity}
         onSelectProfile={handleSelectProfile}
         onSelectMyCommunities={handleSelectMyCommunities}
