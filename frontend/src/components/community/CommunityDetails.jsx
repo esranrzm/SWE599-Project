@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import './CommunityDetails.css';
-import { deleteCommunity, updateCommunity, getCommunityById, submitCommunityInput, getCommunityInputs, updateCommunityInput, deleteCommunityInput, getCommunityInputsCount, getUserByUsername, getUsersByName } from '../../services/api';
+import { deleteCommunity, updateCommunity, getCommunityById, submitCommunityInput, getCommunityInputs, updateCommunityInput, deleteCommunityInput, getCommunityInputsCount, getUserByUsername, getUsersByName, getCitiesByCountry } from '../../services/api';
+import { COUNTRIES } from '../../constants/countries';
 
 
 const formatDate = (isoString) => {
@@ -56,6 +57,10 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   const [showAddInputDialog, setShowAddInputDialog] = useState(false);
   const [dialogFormState, setDialogFormState] = useState({});
   const [editingInput, setEditingInput] = useState(null); // Store the input being edited
+  // Location input state
+  const [locationData, setLocationData] = useState({}); // { inputId: { country: '', city: '', address: '' } }
+  const [citiesData, setCitiesData] = useState({}); // { country: ['city1', 'city2', ...] }
+  const [loadingCities, setLoadingCities] = useState({}); // { country: true/false }
   const [detailsItem, setDetailsItem] = useState(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -139,6 +144,32 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     return sorted;
   }, [inputs, sortConfig, selectedCategory]);
 
+  // Fetch cities for a country
+  const fetchCitiesForCountry = async (country) => {
+    if (!country || citiesData[country]) {
+      return; // Already loaded or invalid country
+    }
+    
+    setLoadingCities(prev => ({ ...prev, [country]: true }));
+    try {
+      const response = await getCitiesByCountry(country);
+      if (response.data && Array.isArray(response.data)) {
+        setCitiesData(prev => ({
+          ...prev,
+          [country]: response.data
+        }));
+      }
+    } catch (error) {
+      console.error(`Error fetching cities for ${country}:`, error);
+      setCitiesData(prev => ({
+        ...prev,
+        [country]: []
+      }));
+    } finally {
+      setLoadingCities(prev => ({ ...prev, [country]: false }));
+    }
+  };
+
   // Initialize dialog form state when dialog opens
   const initializeDialogForm = (inputToEdit = null) => {
     if (!selectedTab) {
@@ -161,6 +192,44 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             initialState[input.input_id] = existingInput.items?.map(item => item.value || item) || [];
           } else if (input.input_type === 'dropdown') {
             initialState[input.input_id] = existingInput.items?.[0]?.value || existingInput.value || '';
+          } else if (input.input_type === 'date') {
+            // For date type, extract date string (YYYY-MM-DD format)
+            const dateValue = existingInput.value || existingInput.items?.[0]?.value || '';
+            initialState[input.input_id] = dateValue ? String(dateValue).split('T')[0] : '';
+          } else if (input.input_type === 'url') {
+            initialState[input.input_id] = existingInput.value || existingInput.items?.[0]?.value || '';
+          } else if (input.input_type === 'location') {
+            // For location type, parse JSON string
+            try {
+              const locationValue = existingInput.value || existingInput.items?.[0]?.value || '';
+              if (locationValue) {
+                const location = JSON.parse(locationValue);
+                setLocationData(prev => ({
+                  ...prev,
+                  [input.input_id]: {
+                    country: location.country || '',
+                    city: location.city || '',
+                    address: location.address || ''
+                  }
+                }));
+                // Fetch cities for the country if not already loaded
+                if (location.country && !citiesData[location.country]) {
+                  fetchCitiesForCountry(location.country);
+                }
+              } else {
+                setLocationData(prev => ({
+                  ...prev,
+                  [input.input_id]: { country: '', city: '', address: '' }
+                }));
+              }
+            } catch (e) {
+              console.error('Error parsing location JSON:', e);
+              setLocationData(prev => ({
+                ...prev,
+                [input.input_id]: { country: '', city: '', address: '' }
+              }));
+            }
+            initialState[input.input_id] = ''; // We'll handle location separately
           } else {
             initialState[input.input_id] = existingInput.value || '';
           }
@@ -176,6 +245,12 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
       tabInputs.forEach((input) => {
         if (input.input_type === 'multiselect') {
           initialState[input.input_id] = [];
+        } else if (input.input_type === 'location') {
+          setLocationData(prev => ({
+            ...prev,
+            [input.input_id]: { country: '', city: '', address: '' }
+          }));
+          initialState[input.input_id] = '';
         } else {
           initialState[input.input_id] = '';
         }
@@ -214,6 +289,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     setDialogFormState({});
     setEditingInput(null);
     setSubmitInputError(null);
+    // Reset location data when closing dialog
+    setLocationData({});
   };
 
   const handleAddInput = async () => {
@@ -241,6 +318,22 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         if (!value || value.trim() === '') {
           validationErrors.push(`${input.input_title} cannot be empty`);
         }
+      } else if (input.input_type === 'date') {
+        if (!value || value.trim() === '') {
+          validationErrors.push(`${input.input_title} requires a date selection`);
+        }
+      } else if (input.input_type === 'url') {
+        if (!value || value.trim() === '') {
+          validationErrors.push(`${input.input_title} requires a URL`);
+        }
+      } else if (input.input_type === 'location') {
+        const location = locationData[input.input_id] || { country: '', city: '', address: '' };
+        if (!location.country || location.country.trim() === '') {
+          validationErrors.push(`${input.input_title} requires a country selection`);
+        }
+        if (!location.city || location.city.trim() === '') {
+          validationErrors.push(`${input.input_title} requires a city selection`);
+        }
       }
     }
 
@@ -264,6 +357,21 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           selectedFields.push(...value.map(v => ({ value: v })));
         } else if (input.input_type === 'free text' || input.input_type === 'freetext') {
           selectedFields.push({ value: value.trim() });
+        } else if (input.input_type === 'date') {
+          // Save date as string in YYYY-MM-DD format
+          selectedFields.push({ value: value || '' });
+        } else if (input.input_type === 'url') {
+          // Save URL as string
+          selectedFields.push({ value: value.trim() || '' });
+        } else if (input.input_type === 'location') {
+          // Save location as JSON string
+          const location = locationData[input.input_id] || { country: '', city: '', address: '' };
+          const locationJson = JSON.stringify({
+            country: location.country || '',
+            city: location.city || '',
+            address: location.address || ''
+          });
+          selectedFields.push({ value: locationJson });
         }
 
         return {
@@ -325,9 +433,20 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         const typeDisplayMap = {
           'free text': 'Free Text',
           'dropdown list': 'Dropdown',
-          'multiple select': 'Multiple Select'
+          'multiple select': 'Multiple Select',
+          'date': 'Date',
+          'url': 'URL',
+          'location': 'Location'
         };
         const displayType = typeDisplayMap[input.type] || input.type;
+        
+        // For URL type, value might be in items or directly in value
+        let inputValue = '';
+        if (input.type === 'url') {
+          inputValue = input.items?.[0]?.value || input.items?.map(item => item.value).join(', ') || '';
+        } else {
+          inputValue = input.items?.map(item => item.value).join(', ') || '';
+        }
         
         groupedInputs[groupKey].inputs.push({
           id: input.id,
@@ -335,7 +454,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           inputTitle: input.name,
           displayType: displayType,
           items: input.items || [],
-          value: input.items?.map(item => item.value).join(', ') || ''
+          value: inputValue
         });
       });
       
@@ -424,9 +543,20 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         const typeDisplayMap = {
           'free text': 'Free Text',
           'dropdown list': 'Dropdown',
-          'multiple select': 'Multiple Select'
+          'multiple select': 'Multiple Select',
+          'date': 'Date',
+          'url': 'URL',
+          'location': 'Location'
         };
         const displayType = typeDisplayMap[input.type] || input.type;
+        
+        // For URL type, value might be in items or directly in value
+        let inputValue = '';
+        if (input.type === 'url') {
+          inputValue = input.items?.[0]?.value || input.items?.map(item => item.value).join(', ') || '';
+        } else {
+          inputValue = input.items?.map(item => item.value).join(', ') || '';
+        }
         
         groupedInputs[groupKey].inputs.push({
           id: input.id,
@@ -434,7 +564,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           inputTitle: input.name,
           displayType: displayType,
           items: input.items || [],
-          value: input.items?.map(item => item.value).join(', ') || ''
+          value: inputValue
         });
       });
       
@@ -553,18 +683,28 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           const typeDisplayMap = {
             'free text': 'Free Text',
             'dropdown list': 'Dropdown',
-            'multiple select': 'Multiple Select'
+            'multiple select': 'Multiple Select',
+            'date': 'Date',
+            'url': 'URL'
           };
-          const displayType = typeDisplayMap[input.type] || input.type;
-          
-          groupedInputs[groupKey].inputs.push({
-            id: input.id,
-            inputType: input.type,
-            inputTitle: input.name,
-            displayType: displayType,
-            items: input.items || [],
-            value: input.items?.map(item => item.value).join(', ') || ''
-          });
+        const displayType = typeDisplayMap[input.type] || input.type;
+        
+        // For URL type, value might be in items or directly in value
+        let inputValue = '';
+        if (input.type === 'url') {
+          inputValue = input.items?.[0]?.value || input.items?.map(item => item.value).join(', ') || '';
+        } else {
+          inputValue = input.items?.map(item => item.value).join(', ') || '';
+        }
+        
+        groupedInputs[groupKey].inputs.push({
+          id: input.id,
+          inputType: input.type,
+          inputTitle: input.name,
+          displayType: displayType,
+          items: input.items || [],
+          value: inputValue
+        });
         });
         
         const mappedInputs = Object.values(groupedInputs).map(group => {
@@ -1076,7 +1216,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             onClick={(event) => event.stopPropagation()}
           >
             <div className="details-modal-header">
-              <h3>Input details</h3>
+              <h3>Input added by {detailsItem.creator_username || detailsItem.creator}</h3>
               <button
                 type="button"
                 className="modal-close-button"
@@ -1088,117 +1228,186 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             </div>
             <dl className="details-modal-content">
               <div>
-                <dt>Created by</dt>
-                <dd>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!onSelectUser) return;
-                      
-                      // If we have creator_username, use it directly
-                      if (detailsItem.creator_username) {
+                <dd style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+                      Created by
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!onSelectUser) return;
+                        
+                        // If we have creator_username, use it directly
+                        if (detailsItem.creator_username) {
+                          try {
+                            const user = await getUserByUsername(detailsItem.creator_username);
+                            if (user) {
+                              onSelectUser(user);
+                              setDetailsItem(null); // Close dialog
+                              return;
+                            }
+                          } catch (error) {
+                            console.log('Could not find user by username:', detailsItem.creator_username);
+                          }
+                        }
+                        
+                        // Fallback: Try to find user by creator name (could be full name or username)
                         try {
-                          const user = await getUserByUsername(detailsItem.creator_username);
+                          // First try as username
+                          const user = await getUserByUsername(detailsItem.creator);
                           if (user) {
                             onSelectUser(user);
                             setDetailsItem(null); // Close dialog
                             return;
                           }
                         } catch (error) {
-                          console.log('Could not find user by username:', detailsItem.creator_username);
-                        }
-                      }
-                      
-                      // Fallback: Try to find user by creator name (could be full name or username)
-                      try {
-                        // First try as username
-                        const user = await getUserByUsername(detailsItem.creator);
-                        if (user) {
-                          onSelectUser(user);
-                          setDetailsItem(null); // Close dialog
-                          return;
-                        }
-                      } catch (error) {
-                        // If not found as username, try searching by name
-                        try {
-                          const users = await getUsersByName(detailsItem.creator);
-                          if (users && users.length > 0) {
-                            // Use the first match
-                            const user = users[0];
-                            let dateOfBirth = null;
-                            if (user.date_of_birth) {
-                              dateOfBirth = String(user.date_of_birth).split('T')[0];
+                          // If not found as username, try searching by name
+                          try {
+                            const users = await getUsersByName(detailsItem.creator);
+                            if (users && users.length > 0) {
+                              // Use the first match
+                              const user = users[0];
+                              let dateOfBirth = null;
+                              if (user.date_of_birth) {
+                                dateOfBirth = String(user.date_of_birth).split('T')[0];
+                              }
+                              onSelectUser({
+                                id: user.id,
+                                username: user.username,
+                                email: user.email,
+                                name: user.name,
+                                surname: user.surname,
+                                profession: user.profession,
+                                dateOfBirth: dateOfBirth,
+                              });
+                              setDetailsItem(null); // Close dialog
+                              return;
                             }
-                            onSelectUser({
-                              id: user.id,
-                              username: user.username,
-                              email: user.email,
-                              name: user.name,
-                              surname: user.surname,
-                              profession: user.profession,
-                              dateOfBirth: dateOfBirth,
-                            });
-                            setDetailsItem(null); // Close dialog
-                            return;
+                          } catch (searchError) {
+                            console.log('Could not find user:', detailsItem.creator);
                           }
-                        } catch (searchError) {
-                          console.log('Could not find user:', detailsItem.creator);
                         }
-                      }
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      color: '#2563eb',
-                      cursor: 'pointer',
-                      textDecoration: 'underline',
-                      fontSize: 'inherit',
-                      fontWeight: 'inherit'
-                    }}
-                  >
-                    {detailsItem.creator}
-                  </button>
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        color: '#2563eb',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        fontSize: 'inherit',
+                        fontWeight: 'inherit',
+                        textAlign: 'left'
+                      }}
+                    >
+                      {detailsItem.creator_username || detailsItem.creator}
+                    </button>
+                  </div>
+                  {hasAdminPrivileges && detailsItem.creator_email && (
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+                        Contact Information
+                      </div>
+                      <div>{detailsItem.creator_email}</div>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+                      Created at
+                    </div>
+                    <div>{formatDate(detailsItem.createdAt)}</div>
+                  </div>
                 </dd>
               </div>
-              {hasAdminPrivileges && detailsItem.creator_email && (
-                <div>
-                  <dt>Contact Information</dt>
-                  <dd>{detailsItem.creator_email}</dd>
-                </div>
-              )}
-              <div>
-                <dt>Type</dt>
-                <dd>{detailsItem.type}</dd>
-              </div>
-              <div>
-                <dt>Created at</dt>
-                <dd>{formatDate(detailsItem.createdAt)}</dd>
-              </div>
               {detailsItem.inputs && detailsItem.inputs.length > 0 && (
-                <div>
-                  <dt>Input Details</dt>
+                <div style={{ marginTop: '2rem' }}>
                   <dd>
                     {detailsItem.inputs.map((input, idx) => (
                       <div key={idx} style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: idx < detailsItem.inputs.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
                         <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#0f172a' }}>
                           {input.inputTitle}
                         </div>
-                        <div style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '0.25rem' }}>
-                          Type: {input.displayType}
-                        </div>
                         {input.items && input.items.length > 0 ? (
-                          <div style={{ fontSize: '0.875rem', color: '#334155' }}>
-                            <strong>Values:</strong>
-                            <ul style={{ margin: '0.25rem 0 0 1.5rem', padding: 0 }}>
-                              {input.items.map((item, itemIdx) => (
-                                <li key={itemIdx}>{item.value || item}</li>
-                              ))}
-                            </ul>
-                          </div>
+                          <ul style={{ fontSize: '0.875rem', color: '#334155', margin: '0.25rem 0 0 1.5rem', padding: 0 }}>
+                            {input.items.map((item, itemIdx) => {
+                              const itemValue = item.value || item;
+                              // Check if this is a URL type input
+                              if (input.inputType === 'url') {
+                                return (
+                                  <li key={itemIdx}>
+                                    <a
+                                      href={itemValue}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{
+                                        color: '#2563eb',
+                                        textDecoration: 'underline',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      {itemValue}
+                                    </a>
+                                  </li>
+                                );
+                              }
+                              // Check if this is a location type input
+                              if (input.inputType === 'location') {
+                                try {
+                                  const location = JSON.parse(itemValue);
+                                  return (
+                                    <li key={itemIdx}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                        <div><strong>Country:</strong> {location.country || 'N/A'}</div>
+                                        <div><strong>City:</strong> {location.city || 'N/A'}</div>
+                                        {location.address && (
+                                          <div><strong>Address:</strong> {location.address}</div>
+                                        )}
+                                      </div>
+                                    </li>
+                                  );
+                                } catch (e) {
+                                  return <li key={itemIdx}>{itemValue}</li>;
+                                }
+                              }
+                              return <li key={itemIdx}>{itemValue}</li>;
+                            })}
+                          </ul>
                         ) : (
                           <div style={{ fontSize: '0.875rem', color: '#334155' }}>
-                            <strong>Value:</strong> {input.value || 'N/A'}
+                            {input.inputType === 'url' && input.value ? (
+                              <a
+                                href={input.value}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  color: '#2563eb',
+                                  textDecoration: 'underline',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {input.value}
+                              </a>
+                            ) : input.inputType === 'location' && input.value ? (
+                              (() => {
+                                try {
+                                  const location = JSON.parse(input.value);
+                                  return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                      <div><strong>Country:</strong> {location.country || 'N/A'}</div>
+                                      <div><strong>City:</strong> {location.city || 'N/A'}</div>
+                                      {location.address && (
+                                        <div><strong>Address:</strong> {location.address}</div>
+                                      )}
+                                    </div>
+                                  );
+                                } catch (e) {
+                                  return input.value || 'N/A';
+                                }
+                              })()
+                            ) : (
+                              input.value || 'N/A'
+                            )}
                           </div>
                         )}
                       </div>
@@ -1405,6 +1614,185 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                       maxLength={200}
                       rows={4}
                     />
+                  )}
+
+                  {input.input_type === 'date' && (
+                    <input
+                      type="date"
+                      className="dialog-form-input"
+                      value={dialogFormState[input.input_id] || ''}
+                      onChange={(e) => {
+                        setDialogFormState((prev) => ({
+                          ...prev,
+                          [input.input_id]: e.target.value,
+                        }));
+                      }}
+                      onKeyDown={(e) => {
+                        // Prevent typing, only allow date picker selection
+                        e.preventDefault();
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        fontSize: '0.875rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    />
+                  )}
+
+                  {input.input_type === 'url' && (
+                    <input
+                      type="url"
+                      className="dialog-form-input"
+                      placeholder="https://example.com"
+                      value={dialogFormState[input.input_id] || ''}
+                      onChange={(e) => {
+                        setDialogFormState((prev) => ({
+                          ...prev,
+                          [input.input_id]: e.target.value,
+                        }));
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        fontSize: '0.875rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        outline: 'none'
+                      }}
+                    />
+                  )}
+
+                  {input.input_type === 'location' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {/* Country Selection */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                          Country *
+                        </label>
+                        <select
+                          className="dialog-form-select"
+                          value={locationData[input.input_id]?.country || ''}
+                          onChange={async (e) => {
+                            const selectedCountry = e.target.value;
+                            setLocationData(prev => ({
+                              ...prev,
+                              [input.input_id]: {
+                                country: selectedCountry,
+                                city: '', // Reset city when country changes
+                                address: prev[input.input_id]?.address || ''
+                              }
+                            }));
+                            // Fetch cities for selected country
+                            if (selectedCountry) {
+                              await fetchCitiesForCountry(selectedCountry);
+                            }
+                          }}
+                          disabled={loadingCities[locationData[input.input_id]?.country] || false}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            fontSize: '0.875rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '6px',
+                            outline: 'none',
+                            cursor: loadingCities[locationData[input.input_id]?.country] ? 'not-allowed' : 'pointer',
+                            opacity: loadingCities[locationData[input.input_id]?.country] ? 0.6 : 1
+                          }}
+                        >
+                          <option value="">Select country</option>
+                          {COUNTRIES.map(country => (
+                            <option key={country} value={country}>{country}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* City Selection */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                          City *
+                        </label>
+                        <select
+                          className="dialog-form-select"
+                          value={locationData[input.input_id]?.city || ''}
+                          onChange={(e) => {
+                            setLocationData(prev => ({
+                              ...prev,
+                              [input.input_id]: {
+                                ...prev[input.input_id],
+                                city: e.target.value
+                              }
+                            }));
+                          }}
+                          disabled={!locationData[input.input_id]?.country || loadingCities[locationData[input.input_id]?.country]}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            fontSize: '0.875rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '6px',
+                            outline: 'none',
+                            cursor: (!locationData[input.input_id]?.country || loadingCities[locationData[input.input_id]?.country]) ? 'not-allowed' : 'pointer',
+                            opacity: (!locationData[input.input_id]?.country || loadingCities[locationData[input.input_id]?.country]) ? 0.6 : 1
+                          }}
+                        >
+                          {loadingCities[locationData[input.input_id]?.country] ? (
+                            <option value="">Loading cities...</option>
+                          ) : !locationData[input.input_id]?.country ? (
+                            <option value="">Select country first</option>
+                          ) : (
+                            <>
+                              <option value="">Select city</option>
+                              <option value="">Proceed with empty city</option>
+                              {citiesData[locationData[input.input_id]?.country]?.map(city => (
+                                <option key={city} value={city}>{city}</option>
+                              ))}
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      {/* Address (Optional) */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                          Detailed Address (Optional)
+                        </label>
+                        <textarea
+                          className="dialog-form-textarea"
+                          placeholder="Enter detailed address..."
+                          value={locationData[input.input_id]?.address || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value.length <= 500) {
+                              setLocationData(prev => ({
+                                ...prev,
+                                [input.input_id]: {
+                                  ...prev[input.input_id],
+                                  address: value
+                                }
+                              }));
+                            }
+                          }}
+                          maxLength={500}
+                          rows={3}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            fontSize: '0.875rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '6px',
+                            outline: 'none',
+                            resize: 'vertical'
+                          }}
+                        />
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
+                          {(locationData[input.input_id]?.address || '').length} / 500 characters
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
                 ))

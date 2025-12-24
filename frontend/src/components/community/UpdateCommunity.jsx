@@ -45,7 +45,10 @@ const UpdateCommunity = ({ community, onUpdateSuccess }) => {
     const typeMapping = {
       "dropdown": "dropdown list",
       "multiselect": "multiple select",
-      "free text": "free text"
+      "free text": "free text",
+      "date": "date",
+      "url": "url",
+      "location": "location"
     };
     return typeMapping[type] || type;
   };
@@ -262,7 +265,7 @@ const UpdateCommunity = ({ community, onUpdateSuccess }) => {
       return;
     }
 
-    if (state.currentInputType === 'free text') {
+    if (state.currentInputType === 'free text' || state.currentInputType === 'date' || state.currentInputType === 'url' || state.currentInputType === 'location') {
       const newInput = {
         id: createId(),
         type: state.currentInputType,
@@ -375,7 +378,7 @@ const UpdateCommunity = ({ community, onUpdateSuccess }) => {
     const state = getInputState(tabId);
     updateInputState(tabId, {
       currentInputType: value,
-      currentItems: value === 'free text' ? [] : state.currentItems,
+      currentItems: (value === 'free text' || value === 'date' || value === 'url' || value === 'location') ? [] : state.currentItems,
       currentInputValue: ''
     });
   };
@@ -491,6 +494,9 @@ const UpdateCommunity = ({ community, onUpdateSuccess }) => {
     if (type === 'dropdown list') return 'Dropdown';
     if (type === 'multiple select') return 'Multi-Select';
     if (type === 'free text') return 'Free Text';
+    if (type === 'date') return 'Date';
+    if (type === 'url') return 'URL';
+    if (type === 'location') return 'Location';
     return type;
   };
 
@@ -841,6 +847,9 @@ const UpdateCommunity = ({ community, onUpdateSuccess }) => {
                                 <option value="free text">Free Text</option>
                                 <option value="dropdown list">Dropdown</option>
                                 <option value="multiple select">Multi-Select</option>
+                                <option value="date">Date</option>
+                                <option value="url">URL</option>
+                                <option value="location">Location</option>
                               </select>
                             </div>
                           </div>

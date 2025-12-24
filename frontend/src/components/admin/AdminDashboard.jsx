@@ -28,6 +28,11 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
   const [userToDelete, setUserToDelete] = useState(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [sortConfig, setSortConfig] = useState({ column: 'created_at', direction: 'desc' });
+  const [userSortConfig, setUserSortConfig] = useState({ column: null, direction: 'asc' });
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [communitySearchQuery, setCommunitySearchQuery] = useState('');
+  const [tabSortConfig, setTabSortConfig] = useState({ column: null, direction: 'asc' });
+  const [tabSearchQuery, setTabSearchQuery] = useState('');
 
   useEffect(() => {
     if (activeTab === 'dashboard') {
@@ -215,10 +220,33 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
     return sortConfig.direction === 'asc' ? '↑' : '↓';
   };
 
-  const sortedCommunities = useMemo(() => {
+  const filteredAndSortedCommunities = useMemo(() => {
     if (!communities.length) return [];
     
-    const sorted = [...communities].sort((a, b) => {
+    let filtered = communities;
+    
+    // Apply search filter
+    if (communitySearchQuery.trim()) {
+      const query = communitySearchQuery.toLowerCase().trim();
+      filtered = communities.filter((community) => {
+        const title = (community.title || '').toLowerCase();
+        const creator = (community.creator_username || community.creator_name || '').toLowerCase();
+        const description = (community.description || '').toLowerCase();
+        const createdAt = formatDate(community.created_at).toLowerCase();
+        const tabCount = String(community.tabs ? community.tabs.length : 0);
+        
+        return (
+          title.includes(query) ||
+          creator.includes(query) ||
+          description.includes(query) ||
+          createdAt.includes(query) ||
+          tabCount.includes(query)
+        );
+      });
+    }
+    
+    // Apply sorting
+    const sorted = [...filtered].sort((a, b) => {
       if (sortConfig.column === 'created_at') {
         const dateA = new Date(a.created_at).getTime();
         const dateB = new Date(b.created_at).getTime();
@@ -232,12 +260,159 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
         } else {
           return nameA < nameB ? 1 : -1;
         }
+      } else if (sortConfig.column === 'number_of_tabs') {
+        const tabsA = a.tabs ? a.tabs.length : 0;
+        const tabsB = b.tabs ? b.tabs.length : 0;
+        return sortConfig.direction === 'asc' ? tabsA - tabsB : tabsB - tabsA;
       }
       return 0;
     });
     
     return sorted;
-  }, [communities, sortConfig]);
+  }, [communities, sortConfig, communitySearchQuery]);
+
+  const handleUserSort = (column) => {
+    setUserSortConfig((prev) => {
+      if (prev.column === column) {
+        return {
+          column,
+          direction: prev.direction === 'asc' ? 'desc' : 'asc',
+        };
+      }
+      return { column, direction: 'asc' };
+    });
+  };
+
+  const getUserSortIndicator = (column) => {
+    if (userSortConfig.column !== column) return '';
+    return userSortConfig.direction === 'asc' ? '↑' : '↓';
+  };
+
+  const filteredAndSortedUsers = useMemo(() => {
+    let filtered = users;
+    
+    // Apply search filter
+    if (userSearchQuery.trim()) {
+      const query = userSearchQuery.toLowerCase().trim();
+      filtered = users.filter((user) => {
+        const name = (user.name || '').toLowerCase();
+        const surname = (user.surname || '').toLowerCase();
+        const username = (user.username || '').toLowerCase();
+        const profession = (user.profession || '').toLowerCase();
+        const dateOfBirth = user.date_of_birth ? String(user.date_of_birth).split('T')[0] : '';
+        
+        return (
+          name.includes(query) ||
+          surname.includes(query) ||
+          username.includes(query) ||
+          profession.includes(query) ||
+          dateOfBirth.includes(query)
+        );
+      });
+    }
+    
+    // Apply sorting
+    if (userSortConfig.column) {
+      filtered = [...filtered].sort((a, b) => {
+        if (userSortConfig.column === 'username') {
+          const usernameA = (a.username || '').toLowerCase();
+          const usernameB = (b.username || '').toLowerCase();
+          if (usernameA === usernameB) return 0;
+          if (userSortConfig.direction === 'asc') {
+            return usernameA > usernameB ? 1 : -1;
+          } else {
+            return usernameA < usernameB ? 1 : -1;
+          }
+        } else if (userSortConfig.column === 'name') {
+          const nameA = (a.name || '').toLowerCase();
+          const nameB = (b.name || '').toLowerCase();
+          if (nameA === nameB) return 0;
+          if (userSortConfig.direction === 'asc') {
+            return nameA > nameB ? 1 : -1;
+          } else {
+            return nameA < nameB ? 1 : -1;
+          }
+        } else if (userSortConfig.column === 'surname') {
+          const surnameA = (a.surname || '').toLowerCase();
+          const surnameB = (b.surname || '').toLowerCase();
+          if (surnameA === surnameB) return 0;
+          if (userSortConfig.direction === 'asc') {
+            return surnameA > surnameB ? 1 : -1;
+          } else {
+            return surnameA < surnameB ? 1 : -1;
+          }
+        } else if (userSortConfig.column === 'date_of_birth') {
+          // Sort by age (older = smaller date value)
+          const dateA = a.date_of_birth ? new Date(a.date_of_birth).getTime() : 0;
+          const dateB = b.date_of_birth ? new Date(b.date_of_birth).getTime() : 0;
+          // For age: ascending = older first (smaller date), descending = younger first (larger date)
+          if (userSortConfig.direction === 'asc') {
+            return dateA - dateB; // Older first
+          } else {
+            return dateB - dateA; // Younger first
+          }
+        }
+        return 0;
+      });
+    }
+    
+    return filtered;
+  }, [users, userSearchQuery, userSortConfig]);
+
+  const handleTabSort = (column) => {
+    setTabSortConfig((prev) => {
+      if (prev.column === column) {
+        return {
+          column,
+          direction: prev.direction === 'asc' ? 'desc' : 'asc',
+        };
+      }
+      return { column, direction: 'asc' };
+    });
+  };
+
+  const getTabSortIndicator = (column) => {
+    if (tabSortConfig.column !== column) return '';
+    return tabSortConfig.direction === 'asc' ? '↑' : '↓';
+  };
+
+  const filteredAndSortedTabs = useMemo(() => {
+    let filtered = tabs;
+    
+    // Apply search filter
+    if (tabSearchQuery.trim()) {
+      const query = tabSearchQuery.toLowerCase().trim();
+      filtered = tabs.filter((tab) => {
+        const name = (tab.name || '').toLowerCase();
+        const communityId = String(tab.community_id || '').toLowerCase();
+        const inputCount = String(tab.input_count || 0).toLowerCase();
+        
+        return (
+          name.includes(query) ||
+          communityId.includes(query) ||
+          inputCount.includes(query)
+        );
+      });
+    }
+    
+    // Apply sorting
+    if (tabSortConfig.column) {
+      filtered = [...filtered].sort((a, b) => {
+        if (tabSortConfig.column === 'community_id') {
+          const idA = a.community_id || 0;
+          const idB = b.community_id || 0;
+          return tabSortConfig.direction === 'asc' ? idA - idB : idB - idA;
+        } else if (tabSortConfig.column === 'number_of_inputs') {
+          const countA = a.input_count || 0;
+          const countB = b.input_count || 0;
+          return tabSortConfig.direction === 'asc' ? countA - countB : countB - countA;
+        }
+        return 0;
+      });
+    }
+    
+    return filtered;
+  }, [tabs, tabSearchQuery, tabSortConfig]);
 
   return (
     <div className="admin-dashboard">
@@ -344,6 +519,23 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
           {activeTab === 'communities' && !loading && (
             <div className="communities-content">
               <h2>Community List</h2>
+              <div style={{ marginBottom: '1rem' }}>
+                <input
+                  type="text"
+                  placeholder="Search communities..."
+                  value={communitySearchQuery}
+                  onChange={(e) => setCommunitySearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    maxWidth: '400px',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.875rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    outline: 'none',
+                  }}
+                />
+              </div>
               <table className="admin-table">
                 <thead>
                   <tr>
@@ -362,12 +554,18 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
                     >
                       Created At {getSortIndicator('created_at')}
                     </th>
-                    <th style={{ textAlign: 'center' }}>Number of tabs</th>
+                    <th 
+                      className="sortable-header"
+                      onClick={() => handleSort('number_of_tabs')}
+                      style={{ cursor: 'pointer', textAlign: 'center' }}
+                    >
+                      Number of tabs {getSortIndicator('number_of_tabs')}
+                    </th>
                     <th style={{ textAlign: 'center' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedCommunities.map((community) => (
+                  {filteredAndSortedCommunities.map((community) => (
                     <tr key={community.id}>
                       <td className="title-cell" style={{ textAlign: 'center' }} title={community.title}>{community.title}</td>
                       <td style={{ textAlign: 'center' }}>{community.creator_username || community.creator_name}</td>
@@ -399,25 +597,71 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
                   ))}
                 </tbody>
               </table>
+              {filteredAndSortedCommunities.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                  {communitySearchQuery ? 'No communities found matching your search.' : 'No communities found.'}
+                </div>
+              )}
             </div>
           )}
 
           {activeTab === 'users' && !loading && (
             <div className="users-content">
               <h2>User List</h2>
+              <div style={{ marginBottom: '1rem' }}>
+                <input
+                  type="text"
+                  placeholder="Search users..."
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    maxWidth: '400px',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.875rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    outline: 'none',
+                  }}
+                />
+              </div>
               <table className="admin-table">
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Surname</th>
-                    <th>Username</th>
-                    <th>Date of Birth</th>
+                    <th 
+                      className="sortable-header"
+                      onClick={() => handleUserSort('name')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Name {getUserSortIndicator('name')}
+                    </th>
+                    <th 
+                      className="sortable-header"
+                      onClick={() => handleUserSort('surname')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Surname {getUserSortIndicator('surname')}
+                    </th>
+                    <th 
+                      className="sortable-header"
+                      onClick={() => handleUserSort('username')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Username {getUserSortIndicator('username')}
+                    </th>
+                    <th 
+                      className="sortable-header"
+                      onClick={() => handleUserSort('date_of_birth')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Date of Birth {getUserSortIndicator('date_of_birth')}
+                    </th>
                     <th>Occupation</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((user) => {
+                  {filteredAndSortedUsers.map((user) => {
                     let dateOfBirth = null;
                     if (user.date_of_birth) {
                       dateOfBirth = String(user.date_of_birth).split('T')[0];
@@ -446,23 +690,57 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
                   })}
                 </tbody>
               </table>
+              {filteredAndSortedUsers.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                  {userSearchQuery ? 'No users found matching your search.' : 'No users found.'}
+                </div>
+              )}
             </div>
           )}
 
           {activeTab === 'tabs' && !loading && (
             <div className="tabs-content">
               <h2>Tab List</h2>
+              <div style={{ marginBottom: '1rem' }}>
+                <input
+                  type="text"
+                  placeholder="Search tabs..."
+                  value={tabSearchQuery}
+                  onChange={(e) => setTabSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    maxWidth: '400px',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.875rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    outline: 'none',
+                  }}
+                />
+              </div>
               <table className="admin-table">
                 <thead>
                   <tr>
                     <th>Tab Name</th>
-                    <th>Community ID</th>
-                    <th>Number of Inputs</th>
+                    <th 
+                      className="sortable-header"
+                      onClick={() => handleTabSort('community_id')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Community ID {getTabSortIndicator('community_id')}
+                    </th>
+                    <th 
+                      className="sortable-header"
+                      onClick={() => handleTabSort('number_of_inputs')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Number of Inputs {getTabSortIndicator('number_of_inputs')}
+                    </th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tabs.map((tab) => (
+                  {filteredAndSortedTabs.map((tab) => (
                     <tr key={tab.id}>
                       <td>{tab.name}</td>
                       <td>{tab.community_id}</td>
@@ -483,6 +761,11 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
                   ))}
                 </tbody>
               </table>
+              {filteredAndSortedTabs.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                  {tabSearchQuery ? 'No tabs found matching your search.' : 'No tabs found.'}
+                </div>
+              )}
             </div>
           )}
         </div>
