@@ -62,6 +62,10 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   const [citiesData, setCitiesData] = useState({}); // { country: ['city1', 'city2', ...] }
   const [loadingCities, setLoadingCities] = useState({}); // { country: true/false }
   const [detailsItem, setDetailsItem] = useState(null);
+  const [inputSearchQuery, setInputSearchQuery] = useState('');
+  const [showFilterDialog, setShowFilterDialog] = useState(false);
+  const [activeFilters, setActiveFilters] = useState({}); // { inputId: { type: 'dropdown', values: [...] } }
+  const [filterFormState, setFilterFormState] = useState({}); // { inputId: { value: ... } }
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
@@ -143,6 +147,179 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
 
     return sorted;
   }, [inputs, sortConfig, selectedCategory]);
+
+  // Get unique values from existing inputs for filter options
+  const getUniqueValuesForInput = (inputTitle) => {
+    const values = new Set();
+    sortedAndFilteredInputs.forEach(input => {
+      if (input.inputs) {
+        input.inputs.forEach(field => {
+          if (field.inputTitle === inputTitle) {
+            if (field.items && field.items.length > 0) {
+              field.items.forEach(item => {
+                const itemValue = typeof item === 'string' ? item : (item.value || '');
+                if (itemValue) values.add(itemValue);
+              });
+            } else if (field.value) {
+              values.add(field.value);
+            }
+          }
+        });
+      }
+    });
+    return Array.from(values).sort();
+  };
+
+  // Get unique countries and cities from location inputs
+  const getUniqueLocations = () => {
+    const countries = new Set();
+    const citiesByCountry = {};
+    
+    sortedAndFilteredInputs.forEach(input => {
+      if (input.inputs) {
+        input.inputs.forEach(field => {
+          if (field.inputType === 'location' && field.value) {
+            try {
+              const location = JSON.parse(field.value);
+              if (location.country) {
+                countries.add(location.country);
+                if (!citiesByCountry[location.country]) {
+                  citiesByCountry[location.country] = new Set();
+                }
+                if (location.city) {
+                  citiesByCountry[location.country].add(location.city);
+                }
+              }
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+        });
+      }
+    });
+    
+    const cities = {};
+    Object.keys(citiesByCountry).forEach(country => {
+      cities[country] = Array.from(citiesByCountry[country]).sort();
+    });
+    
+    return {
+      countries: Array.from(countries).sort(),
+      cities
+    };
+  };
+
+  // Apply advanced filters
+  const applyAdvancedFilters = (inputs) => {
+    if (Object.keys(activeFilters).length === 0) {
+      return inputs;
+    }
+
+    return inputs.filter(input => {
+      if (!input.inputs) return true;
+      
+      // Check each input field against its filter
+      return input.inputs.every(field => {
+        const filter = activeFilters[field.inputTitle];
+        if (!filter) return true; // No filter for this field, include it
+        
+        if (filter.type === 'dropdown' || filter.type === 'multiselect') {
+          // Check if field value matches any selected filter value
+          const fieldValues = field.items?.map(item => {
+            return typeof item === 'string' ? item : (item.value || '');
+          }) || [field.value].filter(Boolean);
+          
+          return fieldValues.some(val => filter.values.includes(val));
+        } else if (filter.type === 'free text') {
+          // Text search
+          const searchText = filter.value.toLowerCase();
+          const fieldValue = (field.value || '').toLowerCase();
+          const itemsText = field.items?.map(item => {
+            const itemValue = typeof item === 'string' ? item : (item.value || '');
+            return itemValue.toLowerCase();
+          }).join(' ') || '';
+          
+          return fieldValue.includes(searchText) || itemsText.includes(searchText);
+        } else if (filter.type === 'date') {
+          // Filter dates earlier than selected date
+          if (!filter.value) return true;
+          const filterDate = new Date(filter.value);
+          const fieldDate = new Date(field.value || field.items?.[0]?.value || '');
+          
+          if (isNaN(fieldDate.getTime())) return true;
+          return fieldDate < filterDate;
+        } else if (filter.type === 'location') {
+          // Location filter
+          if (!field.value) return !filter.country && !filter.city;
+          
+          try {
+            const location = JSON.parse(field.value);
+            if (filter.country && location.country !== filter.country) {
+              return false;
+            }
+            if (filter.city && location.city !== filter.city) {
+              return false;
+            }
+            return true;
+          } catch (e) {
+            return true;
+          }
+        }
+        
+        return true;
+      });
+    });
+  };
+
+  // Filter inputs based on search query and advanced filters
+  const filteredAndSortedInputs = useMemo(() => {
+    let filtered = sortedAndFilteredInputs;
+    
+    // Apply advanced filters first
+    filtered = applyAdvancedFilters(filtered);
+    
+    // Then apply search query
+    if (inputSearchQuery.trim()) {
+      const query = inputSearchQuery.toLowerCase().trim();
+      
+      filtered = filtered.filter(input => {
+        // Search in creator name
+        const creatorMatch = (input.creator || '').toLowerCase().includes(query);
+        
+        // Search in all input values
+        const inputValuesMatch = input.inputs?.some(inputField => {
+          // Check the main value
+          const valueMatch = (inputField.value || '').toLowerCase().includes(query);
+          
+          // Check items (for multiselect, dropdown, etc.)
+          const itemsMatch = inputField.items?.some(item => {
+            const itemValue = typeof item === 'string' ? item : (item.value || '');
+            return itemValue.toLowerCase().includes(query);
+          });
+          
+          // For location type, parse JSON and search
+          if (inputField.inputType === 'location') {
+            try {
+              const location = JSON.parse(inputField.value || '{}');
+              const countryMatch = (location.country || '').toLowerCase().includes(query);
+              const cityMatch = (location.city || '').toLowerCase().includes(query);
+              const addressMatch = (location.address || '').toLowerCase().includes(query);
+              return countryMatch || cityMatch || addressMatch;
+            } catch (e) {
+              // If parsing fails, just search the raw value
+              return (inputField.value || '').toLowerCase().includes(query);
+            }
+          }
+          
+          return valueMatch || itemsMatch;
+        });
+        
+        return creatorMatch || inputValuesMatch;
+      });
+    }
+    
+    return filtered;
+  }, [sortedAndFilteredInputs, inputSearchQuery, activeFilters]);
 
   // Fetch cities for a country
   const fetchCitiesForCountry = async (country) => {
@@ -291,6 +468,92 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     setSubmitInputError(null);
     // Reset location data when closing dialog
     setLocationData({});
+  };
+
+  const handleApplyFilters = () => {
+    // Convert filterFormState to activeFilters
+    const newFilters = {};
+    const tabInputs = selectedTab?.tab_form_structure?.tab_inputs || [];
+    
+    tabInputs.forEach(input => {
+      if (input.input_type === 'location') {
+        // Handle location separately
+        const locationFilter = filterFormState[`${input.input_id}_location`] || {};
+        if (locationFilter && (locationFilter.country || locationFilter.city)) {
+          newFilters[input.input_title] = {
+            type: 'location',
+            country: locationFilter.country || '',
+            city: locationFilter.city || ''
+          };
+        }
+      } else {
+        const filterValue = filterFormState[input.input_id];
+        if (!filterValue || (Array.isArray(filterValue) && filterValue.length === 0)) {
+          return; // Skip empty filters
+        }
+        
+        if (input.input_type === 'dropdown' || input.input_type === 'multiselect') {
+          if (Array.isArray(filterValue) && filterValue.length > 0) {
+            newFilters[input.input_title] = {
+              type: input.input_type === 'dropdown' ? 'dropdown' : 'multiselect',
+              values: filterValue
+            };
+          }
+        } else if (input.input_type === 'free text' || input.input_type === 'freetext') {
+          if (filterValue && filterValue.trim()) {
+            newFilters[input.input_title] = {
+              type: 'free text',
+              value: filterValue.trim()
+            };
+          }
+        } else if (input.input_type === 'date') {
+          if (filterValue) {
+            newFilters[input.input_title] = {
+              type: 'date',
+              value: filterValue
+            };
+          }
+        }
+      }
+    });
+    
+    setActiveFilters(newFilters);
+    setShowFilterDialog(false);
+    setFilterFormState({});
+  };
+
+  const handleClearFilters = () => {
+    setActiveFilters({});
+    setFilterFormState({});
+    // Don't close dialog if it's open, just clear filters
+  };
+
+  const handleAddFilter = (inputTitle, filterData) => {
+    setActiveFilters(prev => ({
+      ...prev,
+      [inputTitle]: filterData
+    }));
+  };
+
+  const handleRemoveFilter = (inputTitle) => {
+    setActiveFilters(prev => {
+      const newFilters = { ...prev };
+      delete newFilters[inputTitle];
+      return newFilters;
+    });
+    // Also clear from form state
+    const tabInputs = selectedTab?.tab_form_structure?.tab_inputs || [];
+    const input = tabInputs.find(inp => inp.input_title === inputTitle);
+    if (input) {
+      setFilterFormState(prev => {
+        const newState = { ...prev };
+        delete newState[input.input_id];
+        if (input.input_type === 'location') {
+          delete newState[`${input.input_id}_location`];
+        }
+        return newState;
+      });
+    }
   };
 
   const handleAddInput = async () => {
@@ -1010,15 +1273,78 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             <div className="inputs-table-wrapper">
               <div className="inputs-table-header-actions">
                 <h2 className="inputs-table-title">Community Inputs</h2>
-                {selectedTab && currentUser && (
-                  <button
-                    type="button"
-                    className="add-input-button"
-                    onClick={handleOpenDialog}
-                  >
-                    Add Input to tab {selectedTab.name || ''}
-                  </button>
-                )}
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flex: 1, justifyContent: 'flex-end' }}>
+                  {selectedTab && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (Object.keys(activeFilters).length > 0) {
+                          handleClearFilters();
+                        } else {
+                          // Initialize filter form state with existing active filters
+                          const tabInputs = selectedTab?.tab_form_structure?.tab_inputs || [];
+                          const initialState = {};
+                          tabInputs.forEach(input => {
+                            const filter = activeFilters[input.input_title];
+                            if (filter) {
+                              if (input.input_type === 'location') {
+                                initialState[`${input.input_id}_location`] = {
+                                  country: filter.country || '',
+                                  city: filter.city || ''
+                                };
+                              } else {
+                                initialState[input.input_id] = filter.values || filter.value || '';
+                              }
+                            }
+                          });
+                          setFilterFormState(initialState);
+                          setShowFilterDialog(true);
+                        }
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.875rem',
+                        border: Object.keys(activeFilters).length > 0 ? '2px solid #2563eb' : '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        backgroundColor: Object.keys(activeFilters).length > 0 ? '#eff6ff' : 'white',
+                        color: Object.keys(activeFilters).length > 0 ? '#2563eb' : '#374151',
+                        cursor: 'pointer',
+                        fontWeight: Object.keys(activeFilters).length > 0 ? 500 : 400
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                      </svg>
+                      {Object.keys(activeFilters).length > 0 ? 'Clear Filter' : 'Filter'}
+                    </button>
+                  )}
+                  <input
+                    type="text"
+                    placeholder="Search inputs..."
+                    value={inputSearchQuery}
+                    onChange={(e) => setInputSearchQuery(e.target.value)}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.875rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      outline: 'none',
+                      minWidth: '250px'
+                    }}
+                  />
+                  {selectedTab && currentUser && (
+                    <button
+                      type="button"
+                      className="add-input-button"
+                      onClick={handleOpenDialog}
+                    >
+                      Add Input to tab {selectedTab.name || ''}
+                    </button>
+                  )}
+                </div>
               </div>
               {submitSuccessMessage && (
                 <div className="success-message" style={{
@@ -1069,7 +1395,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                   </div>
                 ) : (
                   <>
-                    {sortedAndFilteredInputs.map((input) => {
+                    {filteredAndSortedInputs.map((input) => {
                       const isInputCreator = currentUser && input.creator && (
                         input.creator === currentUser.username ||
                         input.creator === `${currentUser.name} ${currentUser.surname}`.trim()
@@ -1189,9 +1515,9 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                         </div>
                       );
                     })}
-                    {!sortedAndFilteredInputs.length && !isLoadingInputs && (
+                    {!filteredAndSortedInputs.length && !isLoadingInputs && (
                       <div className="empty-state">
-                        <p>No community inputs found for the selected filters.</p>
+                        <p>{inputSearchQuery ? 'No matching inputs found for your search.' : 'No community inputs found for the selected filters.'}</p>
                       </div>
                     )}
                   </>
@@ -1978,6 +2304,324 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                 disabled={isUpdating || !updateForm.title.trim() || !updateForm.description.trim()}
               >
                 {isUpdating ? 'Updating...' : 'Update'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filter Dialog */}
+      {showFilterDialog && selectedTab && (
+        <div
+          className="dialog-backdrop"
+          onClick={() => setShowFilterDialog(false)}
+        >
+          <div
+            className="dialog"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '600px', maxHeight: '90vh', overflow: 'auto' }}
+          >
+            <div className="dialog-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
+              <h3>Filter Inputs</h3>
+              <button
+                type="button"
+                className="modal-close-button"
+                onClick={() => setShowFilterDialog(false)}
+                aria-label="Close"
+                style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)' }}
+              >
+                ×
+              </button>
+            </div>
+            <div className="dialog-content" style={{ padding: '1.5rem' }}>
+              {/* Active Filters List */}
+              {Object.keys(activeFilters).length > 0 && (
+                <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
+                  <div style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: '#374151' }}>
+                    Active Filters:
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    {Object.entries(activeFilters).map(([inputTitle, filter]) => (
+                      <div
+                        key={inputTitle}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          padding: '0.5rem 0.75rem',
+                          backgroundColor: '#2563eb',
+                          color: 'white',
+                          borderRadius: '6px',
+                          fontSize: '0.875rem'
+                        }}
+                      >
+                        <span>{inputTitle}: {filter.type === 'dropdown' || filter.type === 'multiselect' ? filter.values.join(', ') : filter.type === 'date' ? `Before ${filter.value}` : filter.type === 'location' ? `${filter.country || ''}${filter.city ? `, ${filter.city}` : ''}` : filter.value}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFilter(inputTitle)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'white',
+                            cursor: 'pointer',
+                            padding: 0,
+                            fontSize: '1rem',
+                            lineHeight: 1
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Filter Form */}
+              {selectedTab.tab_form_structure?.tab_inputs && selectedTab.tab_form_structure.tab_inputs.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  {selectedTab.tab_form_structure.tab_inputs.map((input) => {
+                    // Skip URL input types - no filtering option needed
+                    if (input.input_type === 'url') {
+                      return null;
+                    }
+                    
+                    const uniqueLocations = getUniqueLocations();
+                    
+                    return (
+                      <div key={input.input_id} style={{ padding: '1rem', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+                        <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.875rem', fontWeight: 600, color: '#111827' }}>
+                          {input.input_title}
+                        </label>
+
+                        {/* Dropdown Filter */}
+                        {input.input_type === 'dropdown' && (
+                          <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #d1d5db', borderRadius: '6px', padding: '0.5rem' }}>
+                            {getUniqueValuesForInput(input.input_title).map(value => (
+                              <label
+                                key={value}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                  padding: '0.5rem',
+                                  cursor: 'pointer',
+                                  borderRadius: '4px',
+                                  transition: 'background-color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={(filterFormState[input.input_id] || []).includes(value)}
+                                  onChange={(e) => {
+                                    const currentValues = filterFormState[input.input_id] || [];
+                                    if (e.target.checked) {
+                                      setFilterFormState(prev => ({
+                                        ...prev,
+                                        [input.input_id]: [...currentValues, value]
+                                      }));
+                                    } else {
+                                      setFilterFormState(prev => ({
+                                        ...prev,
+                                        [input.input_id]: currentValues.filter(v => v !== value)
+                                      }));
+                                    }
+                                  }}
+                                  style={{ cursor: 'pointer' }}
+                                />
+                                <span style={{ fontSize: '0.875rem' }}>{value}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Multiselect Filter */}
+                        {input.input_type === 'multiselect' && (
+                          <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #d1d5db', borderRadius: '6px', padding: '0.5rem' }}>
+                            {getUniqueValuesForInput(input.input_title).map(value => (
+                              <label
+                                key={value}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                  padding: '0.5rem',
+                                  cursor: 'pointer',
+                                  borderRadius: '4px',
+                                  transition: 'background-color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={(filterFormState[input.input_id] || []).includes(value)}
+                                  onChange={(e) => {
+                                    const currentValues = filterFormState[input.input_id] || [];
+                                    if (e.target.checked) {
+                                      setFilterFormState(prev => ({
+                                        ...prev,
+                                        [input.input_id]: [...currentValues, value]
+                                      }));
+                                    } else {
+                                      setFilterFormState(prev => ({
+                                        ...prev,
+                                        [input.input_id]: currentValues.filter(v => v !== value)
+                                      }));
+                                    }
+                                  }}
+                                  style={{ cursor: 'pointer' }}
+                                />
+                                <span style={{ fontSize: '0.875rem' }}>{value}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Free Text Filter */}
+                        {(input.input_type === 'free text' || input.input_type === 'freetext') && (
+                          <input
+                            type="text"
+                            placeholder="Search in this field..."
+                            value={filterFormState[input.input_id] || ''}
+                            onChange={(e) => {
+                              setFilterFormState(prev => ({
+                                ...prev,
+                                [input.input_id]: e.target.value
+                              }));
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '0.5rem',
+                              fontSize: '0.875rem',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '6px',
+                              outline: 'none'
+                            }}
+                          />
+                        )}
+
+                        {/* Date Filter */}
+                        {input.input_type === 'date' && (
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                              Show entries with date earlier than:
+                            </label>
+                            <input
+                              type="date"
+                              value={filterFormState[input.input_id] || ''}
+                              onChange={(e) => {
+                                setFilterFormState(prev => ({
+                                  ...prev,
+                                  [input.input_id]: e.target.value
+                                }));
+                              }}
+                              style={{
+                                width: '100%',
+                                padding: '0.5rem',
+                                fontSize: '0.875rem',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '6px',
+                                outline: 'none'
+                              }}
+                            />
+                          </div>
+                        )}
+
+                        {/* Location Filter */}
+                        {input.input_type === 'location' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div>
+                              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                                Country (optional)
+                              </label>
+                              <select
+                                value={filterFormState[`${input.input_id}_location`]?.country || ''}
+                                onChange={(e) => {
+                                  setFilterFormState(prev => ({
+                                    ...prev,
+                                    [`${input.input_id}_location`]: {
+                                      ...prev[`${input.input_id}_location`],
+                                      country: e.target.value,
+                                      city: e.target.value ? prev[`${input.input_id}_location`]?.city || '' : '' // Clear city if country changes
+                                    }
+                                  }));
+                                }}
+                                style={{
+                                  width: '100%',
+                                  padding: '0.5rem',
+                                  fontSize: '0.875rem',
+                                  border: '1px solid #d1d5db',
+                                  borderRadius: '6px',
+                                  outline: 'none'
+                                }}
+                              >
+                                <option value="">All countries</option>
+                                {uniqueLocations.countries.map(country => (
+                                  <option key={country} value={country}>{country}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                                City (optional)
+                              </label>
+                              <select
+                                value={filterFormState[`${input.input_id}_location`]?.city || ''}
+                                onChange={(e) => {
+                                  setFilterFormState(prev => ({
+                                    ...prev,
+                                    [`${input.input_id}_location`]: {
+                                      ...prev[`${input.input_id}_location`],
+                                      city: e.target.value
+                                    }
+                                  }));
+                                }}
+                                disabled={!filterFormState[`${input.input_id}_location`]?.country}
+                                style={{
+                                  width: '100%',
+                                  padding: '0.5rem',
+                                  fontSize: '0.875rem',
+                                  border: '1px solid #d1d5db',
+                                  borderRadius: '6px',
+                                  outline: 'none',
+                                  opacity: !filterFormState[`${input.input_id}_location`]?.country ? 0.6 : 1
+                                }}
+                              >
+                                <option value="">All cities</option>
+                                {filterFormState[`${input.input_id}_location`]?.country && uniqueLocations.cities[filterFormState[`${input.input_id}_location`].country]?.map(city => (
+                                  <option key={city} value={city}>{city}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                  No input fields configured for this tab.
+                </div>
+              )}
+            </div>
+            <div className="dialog-footer" style={{ padding: '1rem 1.5rem', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button
+                type="button"
+                className="dialog-cancel-button"
+                onClick={() => setShowFilterDialog(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="dialog-add-button"
+                onClick={handleApplyFilters}
+              >
+                Apply Filters
               </button>
             </div>
           </div>
