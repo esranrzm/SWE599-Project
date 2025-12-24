@@ -29,7 +29,8 @@ def generate_tab_form_structure(tab_data) -> Optional[Dict[str, Any]]:
             "dropdown list": "dropdown",
             "multiple select": "multiselect",
             "free text": "free text",
-            "date": "date"
+            "date": "date",
+            "url": "url"
         }
         return type_mapping.get(input_type, input_type)
     
@@ -699,7 +700,8 @@ async def submit_community_input(
                 "dropdown": "dropdown list",
                 "multiselect": "multiple select",
                 "free text": "free text",
-                "date": "date"
+                "date": "date",
+                "url": "url"
             }
             return type_mapping.get(input_type, input_type)
         

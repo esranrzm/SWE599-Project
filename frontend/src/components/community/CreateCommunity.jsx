@@ -165,7 +165,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
       return;
     }
 
-    if (state.currentInputType === 'free text' || state.currentInputType === 'date') {
+    if (state.currentInputType === 'free text' || state.currentInputType === 'date' || state.currentInputType === 'url') {
       const newInput = {
         id: createId(),
         type: state.currentInputType,
@@ -278,7 +278,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     const state = getInputState(tabId);
     updateInputState(tabId, {
       currentInputType: value,
-      currentItems: (value === 'free text' || value === 'date') ? [] : state.currentItems,
+      currentItems: (value === 'free text' || value === 'date' || value === 'url') ? [] : state.currentItems,
       currentInputValue: ''
     });
   };
@@ -380,6 +380,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     if (type === 'multiple select') return 'Multi-Select';
     if (type === 'free text') return 'Free Text';
     if (type === 'date') return 'Date';
+    if (type === 'url') return 'URL';
     return type;
   };
 
@@ -604,6 +605,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                                 <option value="dropdown list">Dropdown</option>
                                 <option value="multiple select">Multi-Select</option>
                                 <option value="date">Date</option>
+                                <option value="url">URL</option>
                               </select>
                             </div>
                           </div>

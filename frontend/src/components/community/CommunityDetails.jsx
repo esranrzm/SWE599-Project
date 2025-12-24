@@ -165,6 +165,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             // For date type, extract date string (YYYY-MM-DD format)
             const dateValue = existingInput.value || existingInput.items?.[0]?.value || '';
             initialState[input.input_id] = dateValue ? String(dateValue).split('T')[0] : '';
+          } else if (input.input_type === 'url') {
+            initialState[input.input_id] = existingInput.value || existingInput.items?.[0]?.value || '';
           } else {
             initialState[input.input_id] = existingInput.value || '';
           }
@@ -275,6 +277,9 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         } else if (input.input_type === 'date') {
           // Save date as string in YYYY-MM-DD format
           selectedFields.push({ value: value || '' });
+        } else if (input.input_type === 'url') {
+          // Save URL as string
+          selectedFields.push({ value: value.trim() || '' });
         }
 
         return {
@@ -337,9 +342,18 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           'free text': 'Free Text',
           'dropdown list': 'Dropdown',
           'multiple select': 'Multiple Select',
-          'date': 'Date'
+          'date': 'Date',
+          'url': 'URL'
         };
         const displayType = typeDisplayMap[input.type] || input.type;
+        
+        // For URL type, value might be in items or directly in value
+        let inputValue = '';
+        if (input.type === 'url') {
+          inputValue = input.items?.[0]?.value || input.items?.map(item => item.value).join(', ') || '';
+        } else {
+          inputValue = input.items?.map(item => item.value).join(', ') || '';
+        }
         
         groupedInputs[groupKey].inputs.push({
           id: input.id,
@@ -347,7 +361,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           inputTitle: input.name,
           displayType: displayType,
           items: input.items || [],
-          value: input.items?.map(item => item.value).join(', ') || ''
+          value: inputValue
         });
       });
       
@@ -437,9 +451,18 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           'free text': 'Free Text',
           'dropdown list': 'Dropdown',
           'multiple select': 'Multiple Select',
-          'date': 'Date'
+          'date': 'Date',
+          'url': 'URL'
         };
         const displayType = typeDisplayMap[input.type] || input.type;
+        
+        // For URL type, value might be in items or directly in value
+        let inputValue = '';
+        if (input.type === 'url') {
+          inputValue = input.items?.[0]?.value || input.items?.map(item => item.value).join(', ') || '';
+        } else {
+          inputValue = input.items?.map(item => item.value).join(', ') || '';
+        }
         
         groupedInputs[groupKey].inputs.push({
           id: input.id,
@@ -447,7 +470,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           inputTitle: input.name,
           displayType: displayType,
           items: input.items || [],
-          value: input.items?.map(item => item.value).join(', ') || ''
+          value: inputValue
         });
       });
       
@@ -566,18 +589,28 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           const typeDisplayMap = {
             'free text': 'Free Text',
             'dropdown list': 'Dropdown',
-            'multiple select': 'Multiple Select'
+            'multiple select': 'Multiple Select',
+            'date': 'Date',
+            'url': 'URL'
           };
-          const displayType = typeDisplayMap[input.type] || input.type;
-          
-          groupedInputs[groupKey].inputs.push({
-            id: input.id,
-            inputType: input.type,
-            inputTitle: input.name,
-            displayType: displayType,
-            items: input.items || [],
-            value: input.items?.map(item => item.value).join(', ') || ''
-          });
+        const displayType = typeDisplayMap[input.type] || input.type;
+        
+        // For URL type, value might be in items or directly in value
+        let inputValue = '';
+        if (input.type === 'url') {
+          inputValue = input.items?.[0]?.value || input.items?.map(item => item.value).join(', ') || '';
+        } else {
+          inputValue = input.items?.map(item => item.value).join(', ') || '';
+        }
+        
+        groupedInputs[groupKey].inputs.push({
+          id: input.id,
+          inputType: input.type,
+          inputTitle: input.name,
+          displayType: displayType,
+          items: input.items || [],
+          value: inputValue
+        });
         });
         
         const mappedInputs = Object.values(groupedInputs).map(group => {
@@ -1203,13 +1236,48 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                         </div>
                         {input.items && input.items.length > 0 ? (
                           <ul style={{ fontSize: '0.875rem', color: '#334155', margin: '0.25rem 0 0 1.5rem', padding: 0 }}>
-                            {input.items.map((item, itemIdx) => (
-                              <li key={itemIdx}>{item.value || item}</li>
-                            ))}
+                            {input.items.map((item, itemIdx) => {
+                              const itemValue = item.value || item;
+                              // Check if this is a URL type input
+                              if (input.inputType === 'url') {
+                                return (
+                                  <li key={itemIdx}>
+                                    <a
+                                      href={itemValue}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{
+                                        color: '#2563eb',
+                                        textDecoration: 'underline',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      {itemValue}
+                                    </a>
+                                  </li>
+                                );
+                              }
+                              return <li key={itemIdx}>{itemValue}</li>;
+                            })}
                           </ul>
                         ) : (
                           <div style={{ fontSize: '0.875rem', color: '#334155' }}>
-                            {input.value || 'N/A'}
+                            {input.inputType === 'url' && input.value ? (
+                              <a
+                                href={input.value}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  color: '#2563eb',
+                                  textDecoration: 'underline',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {input.value}
+                              </a>
+                            ) : (
+                              input.value || 'N/A'
+                            )}
                           </div>
                         )}
                       </div>
@@ -1441,6 +1509,29 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                         borderRadius: '6px',
                         outline: 'none',
                         cursor: 'pointer'
+                      }}
+                    />
+                  )}
+
+                  {input.input_type === 'url' && (
+                    <input
+                      type="url"
+                      className="dialog-form-input"
+                      placeholder="https://example.com"
+                      value={dialogFormState[input.input_id] || ''}
+                      onChange={(e) => {
+                        setDialogFormState((prev) => ({
+                          ...prev,
+                          [input.input_id]: e.target.value,
+                        }));
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        fontSize: '0.875rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        outline: 'none'
                       }}
                     />
                   )}
