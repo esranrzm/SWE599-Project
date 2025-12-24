@@ -1076,7 +1076,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             onClick={(event) => event.stopPropagation()}
           >
             <div className="details-modal-header">
-              <h3>Input details</h3>
+              <h3>Input added by {detailsItem.creator_username || detailsItem.creator}</h3>
               <button
                 type="button"
                 className="modal-close-button"
@@ -1088,117 +1088,115 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             </div>
             <dl className="details-modal-content">
               <div>
-                <dt>Created by</dt>
-                <dd>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!onSelectUser) return;
-                      
-                      // If we have creator_username, use it directly
-                      if (detailsItem.creator_username) {
+                <dd style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+                      Created by
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!onSelectUser) return;
+                        
+                        // If we have creator_username, use it directly
+                        if (detailsItem.creator_username) {
+                          try {
+                            const user = await getUserByUsername(detailsItem.creator_username);
+                            if (user) {
+                              onSelectUser(user);
+                              setDetailsItem(null); // Close dialog
+                              return;
+                            }
+                          } catch (error) {
+                            console.log('Could not find user by username:', detailsItem.creator_username);
+                          }
+                        }
+                        
+                        // Fallback: Try to find user by creator name (could be full name or username)
                         try {
-                          const user = await getUserByUsername(detailsItem.creator_username);
+                          // First try as username
+                          const user = await getUserByUsername(detailsItem.creator);
                           if (user) {
                             onSelectUser(user);
                             setDetailsItem(null); // Close dialog
                             return;
                           }
                         } catch (error) {
-                          console.log('Could not find user by username:', detailsItem.creator_username);
-                        }
-                      }
-                      
-                      // Fallback: Try to find user by creator name (could be full name or username)
-                      try {
-                        // First try as username
-                        const user = await getUserByUsername(detailsItem.creator);
-                        if (user) {
-                          onSelectUser(user);
-                          setDetailsItem(null); // Close dialog
-                          return;
-                        }
-                      } catch (error) {
-                        // If not found as username, try searching by name
-                        try {
-                          const users = await getUsersByName(detailsItem.creator);
-                          if (users && users.length > 0) {
-                            // Use the first match
-                            const user = users[0];
-                            let dateOfBirth = null;
-                            if (user.date_of_birth) {
-                              dateOfBirth = String(user.date_of_birth).split('T')[0];
+                          // If not found as username, try searching by name
+                          try {
+                            const users = await getUsersByName(detailsItem.creator);
+                            if (users && users.length > 0) {
+                              // Use the first match
+                              const user = users[0];
+                              let dateOfBirth = null;
+                              if (user.date_of_birth) {
+                                dateOfBirth = String(user.date_of_birth).split('T')[0];
+                              }
+                              onSelectUser({
+                                id: user.id,
+                                username: user.username,
+                                email: user.email,
+                                name: user.name,
+                                surname: user.surname,
+                                profession: user.profession,
+                                dateOfBirth: dateOfBirth,
+                              });
+                              setDetailsItem(null); // Close dialog
+                              return;
                             }
-                            onSelectUser({
-                              id: user.id,
-                              username: user.username,
-                              email: user.email,
-                              name: user.name,
-                              surname: user.surname,
-                              profession: user.profession,
-                              dateOfBirth: dateOfBirth,
-                            });
-                            setDetailsItem(null); // Close dialog
-                            return;
+                          } catch (searchError) {
+                            console.log('Could not find user:', detailsItem.creator);
                           }
-                        } catch (searchError) {
-                          console.log('Could not find user:', detailsItem.creator);
                         }
-                      }
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      color: '#2563eb',
-                      cursor: 'pointer',
-                      textDecoration: 'underline',
-                      fontSize: 'inherit',
-                      fontWeight: 'inherit'
-                    }}
-                  >
-                    {detailsItem.creator}
-                  </button>
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        color: '#2563eb',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        fontSize: 'inherit',
+                        fontWeight: 'inherit',
+                        textAlign: 'left'
+                      }}
+                    >
+                      {detailsItem.creator_username || detailsItem.creator}
+                    </button>
+                  </div>
+                  {hasAdminPrivileges && detailsItem.creator_email && (
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+                        Contact Information
+                      </div>
+                      <div>{detailsItem.creator_email}</div>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+                      Created at
+                    </div>
+                    <div>{formatDate(detailsItem.createdAt)}</div>
+                  </div>
                 </dd>
               </div>
-              {hasAdminPrivileges && detailsItem.creator_email && (
-                <div>
-                  <dt>Contact Information</dt>
-                  <dd>{detailsItem.creator_email}</dd>
-                </div>
-              )}
-              <div>
-                <dt>Type</dt>
-                <dd>{detailsItem.type}</dd>
-              </div>
-              <div>
-                <dt>Created at</dt>
-                <dd>{formatDate(detailsItem.createdAt)}</dd>
-              </div>
               {detailsItem.inputs && detailsItem.inputs.length > 0 && (
-                <div>
-                  <dt>Input Details</dt>
+                <div style={{ marginTop: '2rem' }}>
                   <dd>
                     {detailsItem.inputs.map((input, idx) => (
                       <div key={idx} style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: idx < detailsItem.inputs.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
                         <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#0f172a' }}>
                           {input.inputTitle}
                         </div>
-                        <div style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '0.25rem' }}>
-                          Type: {input.displayType}
-                        </div>
                         {input.items && input.items.length > 0 ? (
-                          <div style={{ fontSize: '0.875rem', color: '#334155' }}>
-                            <strong>Values:</strong>
-                            <ul style={{ margin: '0.25rem 0 0 1.5rem', padding: 0 }}>
-                              {input.items.map((item, itemIdx) => (
-                                <li key={itemIdx}>{item.value || item}</li>
-                              ))}
-                            </ul>
-                          </div>
+                          <ul style={{ fontSize: '0.875rem', color: '#334155', margin: '0.25rem 0 0 1.5rem', padding: 0 }}>
+                            {input.items.map((item, itemIdx) => (
+                              <li key={itemIdx}>{item.value || item}</li>
+                            ))}
+                          </ul>
                         ) : (
                           <div style={{ fontSize: '0.875rem', color: '#334155' }}>
-                            <strong>Value:</strong> {input.value || 'N/A'}
+                            {input.value || 'N/A'}
                           </div>
                         )}
                       </div>
