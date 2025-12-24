@@ -161,6 +161,10 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             initialState[input.input_id] = existingInput.items?.map(item => item.value || item) || [];
           } else if (input.input_type === 'dropdown') {
             initialState[input.input_id] = existingInput.items?.[0]?.value || existingInput.value || '';
+          } else if (input.input_type === 'date') {
+            // For date type, extract date string (YYYY-MM-DD format)
+            const dateValue = existingInput.value || existingInput.items?.[0]?.value || '';
+            initialState[input.input_id] = dateValue ? String(dateValue).split('T')[0] : '';
           } else {
             initialState[input.input_id] = existingInput.value || '';
           }
@@ -241,6 +245,10 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         if (!value || value.trim() === '') {
           validationErrors.push(`${input.input_title} cannot be empty`);
         }
+      } else if (input.input_type === 'date') {
+        if (!value || value.trim() === '') {
+          validationErrors.push(`${input.input_title} requires a date selection`);
+        }
       }
     }
 
@@ -264,6 +272,9 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           selectedFields.push(...value.map(v => ({ value: v })));
         } else if (input.input_type === 'free text' || input.input_type === 'freetext') {
           selectedFields.push({ value: value.trim() });
+        } else if (input.input_type === 'date') {
+          // Save date as string in YYYY-MM-DD format
+          selectedFields.push({ value: value || '' });
         }
 
         return {
@@ -325,7 +336,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         const typeDisplayMap = {
           'free text': 'Free Text',
           'dropdown list': 'Dropdown',
-          'multiple select': 'Multiple Select'
+          'multiple select': 'Multiple Select',
+          'date': 'Date'
         };
         const displayType = typeDisplayMap[input.type] || input.type;
         
@@ -424,7 +436,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         const typeDisplayMap = {
           'free text': 'Free Text',
           'dropdown list': 'Dropdown',
-          'multiple select': 'Multiple Select'
+          'multiple select': 'Multiple Select',
+          'date': 'Date'
         };
         const displayType = typeDisplayMap[input.type] || input.type;
         
@@ -1402,6 +1415,33 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                       }}
                       maxLength={200}
                       rows={4}
+                    />
+                  )}
+
+                  {input.input_type === 'date' && (
+                    <input
+                      type="date"
+                      className="dialog-form-input"
+                      value={dialogFormState[input.input_id] || ''}
+                      onChange={(e) => {
+                        setDialogFormState((prev) => ({
+                          ...prev,
+                          [input.input_id]: e.target.value,
+                        }));
+                      }}
+                      onKeyDown={(e) => {
+                        // Prevent typing, only allow date picker selection
+                        e.preventDefault();
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        fontSize: '0.875rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
                     />
                   )}
                 </div>

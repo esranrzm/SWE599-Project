@@ -28,7 +28,8 @@ def generate_tab_form_structure(tab_data) -> Optional[Dict[str, Any]]:
         type_mapping = {
             "dropdown list": "dropdown",
             "multiple select": "multiselect",
-            "free text": "free text"
+            "free text": "free text",
+            "date": "date"
         }
         return type_mapping.get(input_type, input_type)
     
@@ -52,7 +53,7 @@ def generate_tab_form_structure(tab_data) -> Optional[Dict[str, Any]]:
                 input_obj["input_fields"] = [{"value": item.value} for item in input_data.items]
             else:
                 input_obj["input_fields"] = []
-        else:  # free text
+        else:  # free text or date
             input_obj["input_fields"] = None
         
         tab_inputs.append(input_obj)
@@ -697,7 +698,8 @@ async def submit_community_input(
             type_mapping = {
                 "dropdown": "dropdown list",
                 "multiselect": "multiple select",
-                "free text": "free text"
+                "free text": "free text",
+                "date": "date"
             }
             return type_mapping.get(input_type, input_type)
         
@@ -953,7 +955,8 @@ async def update_community_input(
             type_mapping = {
                 "dropdown": "dropdown list",
                 "multiselect": "multiple select",
-                "free text": "free text"
+                "free text": "free text",
+                "date": "date"
             }
             return type_mapping.get(input_type, input_type)
         
