@@ -1050,4 +1050,32 @@ export const getAllTabsAdmin = async () => {
   }
 };
 
+export const getCitiesByCountry = async (country) => {
+  try {
+    const token = getToken();
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/communities/cities/${encodeURIComponent(country)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch cities');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get cities error:', error);
+    throw error;
+  }
+};
+
 

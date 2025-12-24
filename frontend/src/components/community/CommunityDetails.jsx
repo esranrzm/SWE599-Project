@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import './CommunityDetails.css';
-import { deleteCommunity, updateCommunity, getCommunityById, submitCommunityInput, getCommunityInputs, updateCommunityInput, deleteCommunityInput, getCommunityInputsCount, getUserByUsername, getUsersByName } from '../../services/api';
+import { deleteCommunity, updateCommunity, getCommunityById, submitCommunityInput, getCommunityInputs, updateCommunityInput, deleteCommunityInput, getCommunityInputsCount, getUserByUsername, getUsersByName, getCitiesByCountry } from '../../services/api';
+import { COUNTRIES } from '../../constants/countries';
 
 
 const formatDate = (isoString) => {
@@ -56,6 +57,10 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   const [showAddInputDialog, setShowAddInputDialog] = useState(false);
   const [dialogFormState, setDialogFormState] = useState({});
   const [editingInput, setEditingInput] = useState(null); // Store the input being edited
+  // Location input state
+  const [locationData, setLocationData] = useState({}); // { inputId: { country: '', city: '', address: '' } }
+  const [citiesData, setCitiesData] = useState({}); // { country: ['city1', 'city2', ...] }
+  const [loadingCities, setLoadingCities] = useState({}); // { country: true/false }
   const [detailsItem, setDetailsItem] = useState(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -139,6 +144,32 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     return sorted;
   }, [inputs, sortConfig, selectedCategory]);
 
+  // Fetch cities for a country
+  const fetchCitiesForCountry = async (country) => {
+    if (!country || citiesData[country]) {
+      return; // Already loaded or invalid country
+    }
+    
+    setLoadingCities(prev => ({ ...prev, [country]: true }));
+    try {
+      const response = await getCitiesByCountry(country);
+      if (response.data && Array.isArray(response.data)) {
+        setCitiesData(prev => ({
+          ...prev,
+          [country]: response.data
+        }));
+      }
+    } catch (error) {
+      console.error(`Error fetching cities for ${country}:`, error);
+      setCitiesData(prev => ({
+        ...prev,
+        [country]: []
+      }));
+    } finally {
+      setLoadingCities(prev => ({ ...prev, [country]: false }));
+    }
+  };
+
   // Initialize dialog form state when dialog opens
   const initializeDialogForm = (inputToEdit = null) => {
     if (!selectedTab) {
@@ -167,6 +198,38 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
             initialState[input.input_id] = dateValue ? String(dateValue).split('T')[0] : '';
           } else if (input.input_type === 'url') {
             initialState[input.input_id] = existingInput.value || existingInput.items?.[0]?.value || '';
+          } else if (input.input_type === 'location') {
+            // For location type, parse JSON string
+            try {
+              const locationValue = existingInput.value || existingInput.items?.[0]?.value || '';
+              if (locationValue) {
+                const location = JSON.parse(locationValue);
+                setLocationData(prev => ({
+                  ...prev,
+                  [input.input_id]: {
+                    country: location.country || '',
+                    city: location.city || '',
+                    address: location.address || ''
+                  }
+                }));
+                // Fetch cities for the country if not already loaded
+                if (location.country && !citiesData[location.country]) {
+                  fetchCitiesForCountry(location.country);
+                }
+              } else {
+                setLocationData(prev => ({
+                  ...prev,
+                  [input.input_id]: { country: '', city: '', address: '' }
+                }));
+              }
+            } catch (e) {
+              console.error('Error parsing location JSON:', e);
+              setLocationData(prev => ({
+                ...prev,
+                [input.input_id]: { country: '', city: '', address: '' }
+              }));
+            }
+            initialState[input.input_id] = ''; // We'll handle location separately
           } else {
             initialState[input.input_id] = existingInput.value || '';
           }
@@ -182,6 +245,12 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
       tabInputs.forEach((input) => {
         if (input.input_type === 'multiselect') {
           initialState[input.input_id] = [];
+        } else if (input.input_type === 'location') {
+          setLocationData(prev => ({
+            ...prev,
+            [input.input_id]: { country: '', city: '', address: '' }
+          }));
+          initialState[input.input_id] = '';
         } else {
           initialState[input.input_id] = '';
         }
@@ -220,6 +289,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     setDialogFormState({});
     setEditingInput(null);
     setSubmitInputError(null);
+    // Reset location data when closing dialog
+    setLocationData({});
   };
 
   const handleAddInput = async () => {
@@ -251,6 +322,18 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         if (!value || value.trim() === '') {
           validationErrors.push(`${input.input_title} requires a date selection`);
         }
+      } else if (input.input_type === 'url') {
+        if (!value || value.trim() === '') {
+          validationErrors.push(`${input.input_title} requires a URL`);
+        }
+      } else if (input.input_type === 'location') {
+        const location = locationData[input.input_id] || { country: '', city: '', address: '' };
+        if (!location.country || location.country.trim() === '') {
+          validationErrors.push(`${input.input_title} requires a country selection`);
+        }
+        if (!location.city || location.city.trim() === '') {
+          validationErrors.push(`${input.input_title} requires a city selection`);
+        }
       }
     }
 
@@ -280,6 +363,15 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
         } else if (input.input_type === 'url') {
           // Save URL as string
           selectedFields.push({ value: value.trim() || '' });
+        } else if (input.input_type === 'location') {
+          // Save location as JSON string
+          const location = locationData[input.input_id] || { country: '', city: '', address: '' };
+          const locationJson = JSON.stringify({
+            country: location.country || '',
+            city: location.city || '',
+            address: location.address || ''
+          });
+          selectedFields.push({ value: locationJson });
         }
 
         return {
@@ -343,7 +435,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           'dropdown list': 'Dropdown',
           'multiple select': 'Multiple Select',
           'date': 'Date',
-          'url': 'URL'
+          'url': 'URL',
+          'location': 'Location'
         };
         const displayType = typeDisplayMap[input.type] || input.type;
         
@@ -452,7 +545,8 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
           'dropdown list': 'Dropdown',
           'multiple select': 'Multiple Select',
           'date': 'Date',
-          'url': 'URL'
+          'url': 'URL',
+          'location': 'Location'
         };
         const displayType = typeDisplayMap[input.type] || input.type;
         
@@ -1257,6 +1351,25 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                                   </li>
                                 );
                               }
+                              // Check if this is a location type input
+                              if (input.inputType === 'location') {
+                                try {
+                                  const location = JSON.parse(itemValue);
+                                  return (
+                                    <li key={itemIdx}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                        <div><strong>Country:</strong> {location.country || 'N/A'}</div>
+                                        <div><strong>City:</strong> {location.city || 'N/A'}</div>
+                                        {location.address && (
+                                          <div><strong>Address:</strong> {location.address}</div>
+                                        )}
+                                      </div>
+                                    </li>
+                                  );
+                                } catch (e) {
+                                  return <li key={itemIdx}>{itemValue}</li>;
+                                }
+                              }
                               return <li key={itemIdx}>{itemValue}</li>;
                             })}
                           </ul>
@@ -1275,6 +1388,23 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                               >
                                 {input.value}
                               </a>
+                            ) : input.inputType === 'location' && input.value ? (
+                              (() => {
+                                try {
+                                  const location = JSON.parse(input.value);
+                                  return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                      <div><strong>Country:</strong> {location.country || 'N/A'}</div>
+                                      <div><strong>City:</strong> {location.city || 'N/A'}</div>
+                                      {location.address && (
+                                        <div><strong>Address:</strong> {location.address}</div>
+                                      )}
+                                    </div>
+                                  );
+                                } catch (e) {
+                                  return input.value || 'N/A';
+                                }
+                              })()
                             ) : (
                               input.value || 'N/A'
                             )}
@@ -1534,6 +1664,135 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
                         outline: 'none'
                       }}
                     />
+                  )}
+
+                  {input.input_type === 'location' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {/* Country Selection */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                          Country *
+                        </label>
+                        <select
+                          className="dialog-form-select"
+                          value={locationData[input.input_id]?.country || ''}
+                          onChange={async (e) => {
+                            const selectedCountry = e.target.value;
+                            setLocationData(prev => ({
+                              ...prev,
+                              [input.input_id]: {
+                                country: selectedCountry,
+                                city: '', // Reset city when country changes
+                                address: prev[input.input_id]?.address || ''
+                              }
+                            }));
+                            // Fetch cities for selected country
+                            if (selectedCountry) {
+                              await fetchCitiesForCountry(selectedCountry);
+                            }
+                          }}
+                          disabled={loadingCities[locationData[input.input_id]?.country] || false}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            fontSize: '0.875rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '6px',
+                            outline: 'none',
+                            cursor: loadingCities[locationData[input.input_id]?.country] ? 'not-allowed' : 'pointer',
+                            opacity: loadingCities[locationData[input.input_id]?.country] ? 0.6 : 1
+                          }}
+                        >
+                          <option value="">Select country</option>
+                          {COUNTRIES.map(country => (
+                            <option key={country} value={country}>{country}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* City Selection */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                          City *
+                        </label>
+                        <select
+                          className="dialog-form-select"
+                          value={locationData[input.input_id]?.city || ''}
+                          onChange={(e) => {
+                            setLocationData(prev => ({
+                              ...prev,
+                              [input.input_id]: {
+                                ...prev[input.input_id],
+                                city: e.target.value
+                              }
+                            }));
+                          }}
+                          disabled={!locationData[input.input_id]?.country || loadingCities[locationData[input.input_id]?.country]}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            fontSize: '0.875rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '6px',
+                            outline: 'none',
+                            cursor: (!locationData[input.input_id]?.country || loadingCities[locationData[input.input_id]?.country]) ? 'not-allowed' : 'pointer',
+                            opacity: (!locationData[input.input_id]?.country || loadingCities[locationData[input.input_id]?.country]) ? 0.6 : 1
+                          }}
+                        >
+                          {loadingCities[locationData[input.input_id]?.country] ? (
+                            <option value="">Loading cities...</option>
+                          ) : !locationData[input.input_id]?.country ? (
+                            <option value="">Select country first</option>
+                          ) : (
+                            <>
+                              <option value="">Select city</option>
+                              <option value="">Proceed with empty city</option>
+                              {citiesData[locationData[input.input_id]?.country]?.map(city => (
+                                <option key={city} value={city}>{city}</option>
+                              ))}
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      {/* Address (Optional) */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                          Detailed Address (Optional)
+                        </label>
+                        <textarea
+                          className="dialog-form-textarea"
+                          placeholder="Enter detailed address..."
+                          value={locationData[input.input_id]?.address || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value.length <= 500) {
+                              setLocationData(prev => ({
+                                ...prev,
+                                [input.input_id]: {
+                                  ...prev[input.input_id],
+                                  address: value
+                                }
+                              }));
+                            }
+                          }}
+                          maxLength={500}
+                          rows={3}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            fontSize: '0.875rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '6px',
+                            outline: 'none',
+                            resize: 'vertical'
+                          }}
+                        />
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
+                          {(locationData[input.input_id]?.address || '').length} / 500 characters
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
                 ))

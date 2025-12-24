@@ -85,7 +85,7 @@ class InputTypeCreate(BaseModel):
     @field_validator('type')
     @classmethod
     def validate_type(cls, v):
-        allowed_types = ['free text', 'dropdown list', 'multiple select', 'date', 'url']
+        allowed_types = ['free text', 'dropdown list', 'multiple select', 'date', 'url', 'location']
         if v not in allowed_types:
             raise ValueError(f"Input type must be one of: {', '.join(allowed_types)}")
         return v
@@ -95,7 +95,7 @@ class InputTypeCreate(BaseModel):
         if self.type in ['dropdown list', 'multiple select']:
             if not self.items or len(self.items) == 0:
                 raise ValueError(f"Items are required for '{self.type}' input type (at least 1 item)")
-        elif self.type in ['free text', 'date', 'url']:
+        elif self.type in ['free text', 'date', 'url', 'location']:
             if self.items and len(self.items) > 0:
                 raise ValueError(f"Items are not allowed for '{self.type}' input type")
         return self

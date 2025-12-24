@@ -4,6 +4,7 @@ from sqlalchemy import func, distinct
 from typing import List, Optional, Dict, Any
 import logging
 from datetime import datetime, timedelta
+import httpx
 
 from app.database import get_db
 from app.models import Community, User, CommunityTab, InputType, InputTypeItem
@@ -30,7 +31,8 @@ def generate_tab_form_structure(tab_data) -> Optional[Dict[str, Any]]:
             "multiple select": "multiselect",
             "free text": "free text",
             "date": "date",
-            "url": "url"
+            "url": "url",
+            "location": "location"
         }
         return type_mapping.get(input_type, input_type)
     
@@ -701,7 +703,8 @@ async def submit_community_input(
                 "multiselect": "multiple select",
                 "free text": "free text",
                 "date": "date",
-                "url": "url"
+                "url": "url",
+                "location": "location"
             }
             return type_mapping.get(input_type, input_type)
         
@@ -1093,5 +1096,52 @@ async def delete_community_input(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while deleting the community input: {str(e)}",
+        )
+
+
+@router.get("/cities/{country}", status_code=status.HTTP_200_OK)
+async def get_cities_by_country(country: str):
+    """
+    Fetch cities for a given country from the external API
+    """
+    try:
+        url = f"https://countriesnow.space/api/v0.1/countries/cities/q?country={country}"
+        headers = {
+            "referer": "http://13.60.88.202:3000/",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("error", True):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=data.get("msg", "Failed to fetch cities")
+                )
+            
+            cities = data.get("data", [])
+            return {
+                "error": False,
+                "msg": f"cities in {country} retrieved",
+                "data": cities
+            }
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Request to cities API timed out"
+        )
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to fetch cities: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Error fetching cities for {country}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal error while fetching cities: {str(e)}"
         )
 
