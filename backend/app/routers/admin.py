@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 import logging
 
 from app.database import get_db
-from app.models import User, Community, CommunityTab, InputType
+from app.models import User, Community, CommunityTab, InputContribution
 from app.schemas import UserResponse, CommunityResponse
 from app.dependencies import get_current_user
 
@@ -228,21 +228,10 @@ async def get_all_tabs_admin(
         
         result = []
         for tab in tabs:
-            from sqlalchemy import distinct
-            from datetime import datetime
-            
-            inputs = db.query(InputType)\
-                .filter(InputType.tab_id == tab.id)\
-                .all()
-            
-            submission_groups = {}
-            for input_type in inputs:
-                created_at_rounded = input_type.created_at.replace(microsecond=0) if input_type.created_at else None
-                key = (input_type.creator_name or 'Unknown', created_at_rounded)
-                if key not in submission_groups:
-                    submission_groups[key] = True
-            
-            input_count = len(submission_groups)
+            # Count input contributions for this tab
+            input_count = db.query(func.count(InputContribution.id))\
+                .filter(InputContribution.tab_id == tab.id)\
+                .scalar() or 0
             
             result.append({
                 "id": tab.id,

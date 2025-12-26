@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import httpx
 
 from app.database import get_db
-from app.models import Community, User, CommunityTab, InputType, InputTypeItem
+from app.models import Community, User, CommunityTab, InputContribution
 from app.schemas import (
     CommunityCreate, CommunityResponse, CommunityUpdate, CommunityUpdateWithTabs,
     CommunityInputSubmission, CommunityInputResponse, SelectedInputField,
@@ -15,6 +15,7 @@ from app.schemas import (
 )
 from app.dependencies import get_current_user
 from sqlalchemy.orm import joinedload
+import json
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -23,8 +24,150 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def convert_location_value_to_json_string(value: str) -> str:
+    """
+    Convert location value to JSON string format.
+    If value is already a JSON string, parse and re-stringify it.
+    If value is a dict, convert to JSON string.
+    Otherwise, try to parse as JSON.
+    """
+    if isinstance(value, dict):
+        return json.dumps(value)
+    try:
+        # Try to parse as JSON first
+        parsed = json.loads(value)
+        if isinstance(parsed, dict):
+            return json.dumps(parsed)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # If not JSON, assume it's already a string representation
+    return value
+
+
+def convert_location_value_from_json_string(value: str) -> str:
+    """
+    Convert location JSON string back to string for display.
+    For location type, we keep it as JSON string in the value field.
+    """
+    return value
+
+
+def build_input_list_from_submission(tab_inputs: List[Any], map_input_type_func) -> List[Dict[str, Any]]:
+    """
+    Build input_list JSON structure from CommunityInputSubmission tab_inputs.
+    """
+    input_list = []
+    
+    for tab_input in tab_inputs:
+        input_obj = {
+            "input_title": tab_input.input_title,
+            "input_type": map_input_type_func(tab_input.input_type),
+            "selected_fields": []
+        }
+        
+        # Process selected fields
+        for selected_field in tab_input.selected_input_fields:
+            value = selected_field.value
+            
+            # For location type, ensure value is a JSON string
+            if tab_input.input_type == "location":
+                # Try to parse and validate the location JSON
+                try:
+                    location_data = json.loads(value) if isinstance(value, str) else value
+                    if isinstance(location_data, dict):
+                        # Ensure it has the required fields
+                        location_json = json.dumps({
+                            "country": location_data.get("country", ""),
+                            "city": location_data.get("city", ""),
+                            "address": location_data.get("address", "")
+                        })
+                        input_obj["selected_fields"].append({"value": location_json})
+                    else:
+                        input_obj["selected_fields"].append({"value": value})
+                except (json.JSONDecodeError, TypeError):
+                    # If not valid JSON, wrap it
+                    input_obj["selected_fields"].append({"value": json.dumps({"country": "", "city": "", "address": value})})
+            else:
+                input_obj["selected_fields"].append({"value": value})
+        
+        input_list.append(input_obj)
+    
+    return input_list
+
+
+def convert_input_list_to_input_type_responses(
+    input_contribution: InputContribution,
+    db: Session
+) -> List[InputTypeResponse]:
+    input_list = input_contribution.input_list or []
+    result = []
+    
+    # Try to find the creator user
+    creator_user = db.query(User).filter(User.username == input_contribution.username).first()
+    if not creator_user:
+        # Try to find by full name
+        name_parts = input_contribution.username.strip().split()
+        if len(name_parts) >= 2:
+            creator_user = db.query(User).filter(
+                User.name == name_parts[0],
+                User.surname == " ".join(name_parts[1:])
+            ).first()
+    
+    creator_name = input_contribution.username
+    creator_username = creator_user.username if creator_user else None
+    creator_email = creator_user.email if creator_user else None
+    
+    # Convert each input in input_list to InputTypeResponse format
+    for idx, input_data in enumerate(input_list):
+        input_title = input_data.get("input_title", "")
+        input_type = input_data.get("input_type", "")
+        selected_fields = input_data.get("selected_fields", [])
+        
+        # Map input_type back to database format
+        def map_input_type_back(input_type: str) -> str:
+            type_mapping = {
+                "dropdown": "dropdown list",
+                "multiselect": "multiple select",
+                "free text": "free text",
+                "date": "date",
+                "url": "url",
+                "location": "location"
+            }
+            return type_mapping.get(input_type, input_type)
+        
+        db_input_type = map_input_type_back(input_type)
+        
+        items = []
+        for item_idx, selected_field in enumerate(selected_fields):
+            value = selected_field.get("value", "")
+            
+            items.append({
+                "id": item_idx,
+                "value": value,
+                "display_order": item_idx,
+                "created_at": input_contribution.created_at,
+                "updated_at": input_contribution.updated_at
+            })
+        
+        input_dict = {
+            "id": input_contribution.id,
+            "type": db_input_type,
+            "name": input_title,
+            "creator_name": creator_name,
+            "creator_username": creator_username,
+            "creator_email": creator_email,
+            "display_order": idx,
+            "items": items,
+            "created_at": input_contribution.created_at,
+            "updated_at": input_contribution.updated_at,
+        }
+        
+        result.append(InputTypeResponse.model_validate(input_dict))
+    
+    return result
+
+
 def generate_tab_form_structure(tab_data) -> Optional[Dict[str, Any]]:
-    # Map input type names to the required format
     def map_input_type(input_type: str) -> str:
         type_mapping = {
             "dropdown list": "dropdown",
@@ -90,7 +233,7 @@ async def create_community(
         )
         
         db.add(new_community)
-        db.flush()  # Flush to get the community ID
+        db.flush()
         
         # Create tabs if provided
         if community_data.tabs:
@@ -107,12 +250,10 @@ async def create_community(
                     display_order=tab_data.display_order if tab_data.display_order else tab_order
                 )
                 db.add(new_tab)
-                # No need to flush here since we're not creating related input_types entries
         
         db.commit()
         db.refresh(new_community)
         
-        # Eager load tabs for response (no need to load input_types since we use tab_form_structure)
         db.refresh(new_community)
         community_with_tabs = db.query(Community)\
             .options(
@@ -325,10 +466,11 @@ async def get_contributed_communities(
         user_full_name = f"{current_user.name} {current_user.surname}".strip()
         user_username = current_user.username
         
-        contributed_community_ids = db.query(distinct(InputType.community_id))\
+        # Get distinct community IDs where user has contributed
+        contributed_community_ids = db.query(distinct(InputContribution.space_id))\
             .filter(
-                (InputType.creator_name == user_full_name) |
-                (InputType.creator_name == user_username)
+                (InputContribution.username == user_username) |
+                (InputContribution.username == user_full_name)
             )\
             .all()
         
@@ -617,29 +759,6 @@ async def update_community_full(
                         
                         tab_form_structure = generate_tab_form_structure(tab_data)
                         existing_tab.tab_form_structure = tab_form_structure
-                        
-                        old_tab_form = existing_tab.tab_form_structure or {}
-                        old_inputs = old_tab_form.get('tab_inputs', [])
-                        
-                        old_input_map = {}
-                        for inp in old_inputs:
-                            input_id = inp.get('input_id')
-                            if input_id is not None:
-                                old_input_map[input_id] = inp.get('input_title', '')
-                        
-                        new_input_map = {}
-                        for idx, inp in enumerate(tab_data.inputTypes):
-                            input_id = inp.id if inp.id is not None else idx
-                            new_input_map[input_id] = inp.name
-                        
-                        # Update InputType entries where name changed
-                        for input_id, old_name in old_input_map.items():
-                            new_name = new_input_map.get(input_id)
-                            if new_name and new_name != old_name:
-                                db.query(InputType).filter(
-                                    InputType.tab_id == existing_tab.id,
-                                    InputType.name == old_name
-                                ).update({InputType.name: new_name}, synchronize_session=False)
                 else:
                     # Create new tab
                     tab_form_structure = generate_tab_form_structure(tab_data)
@@ -766,8 +885,8 @@ async def submit_community_input(
         # Map input_type from frontend format to database format
         def map_input_type(input_type: str) -> str:
             type_mapping = {
-                "dropdown": "dropdown list",
-                "multiselect": "multiple select",
+                "dropdown": "dropdown",
+                "multiselect": "multiselect",
                 "free text": "free text",
                 "date": "date",
                 "url": "url",
@@ -775,38 +894,43 @@ async def submit_community_input(
             }
             return type_mapping.get(input_type, input_type)
         
-        # Create input types and items for each tab input
+        # Validate that all inputs have at least one selected field
         for tab_input in input_data.tab_inputs:
-            # Validate that selected_input_fields is not empty
             if not tab_input.selected_input_fields or len(tab_input.selected_input_fields) == 0:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"At least one selection is required for '{tab_input.input_title}'",
                 )
-            
-            # Get creator name from request or current user
-            creator_name = input_data.input_creator or f"{current_user.name} {current_user.surname}".strip()
-            
-            # Create InputType entry
-            new_input_type = InputType(
-                community_id=community_id,
-                tab_id=input_data.tab_id,
-                type=map_input_type(tab_input.input_type),
-                name=tab_input.input_title,
-                creator_name=creator_name,
-                display_order=tab_input.input_id
-            )
-            db.add(new_input_type)
-            db.flush()  # Flush to get the input type ID
-            
-            # Create InputTypeItem entries for selected values
-            for item_order, selected_field in enumerate(tab_input.selected_input_fields):
-                new_item = InputTypeItem(
-                    input_type_id=new_input_type.id,
-                    value=selected_field.value,
-                    display_order=item_order
-                )
-                db.add(new_item)
+        
+        # Get creator username from request or current user
+        creator_name = input_data.input_creator or f"{current_user.name} {current_user.surname}".strip()
+        # Use username if creator_name matches current user, otherwise use the provided name
+        if creator_name == f"{current_user.name} {current_user.surname}".strip():
+            username = current_user.username
+        else:
+            # Try to find user by name, otherwise use the name as username
+            name_parts = creator_name.strip().split()
+            if len(name_parts) >= 2:
+                creator_user = db.query(User).filter(
+                    User.name == name_parts[0],
+                    User.surname == " ".join(name_parts[1:])
+                ).first()
+                username = creator_user.username if creator_user else creator_name
+            else:
+                username = creator_name
+        
+        # Build input_list JSON structure
+        input_list = build_input_list_from_submission(input_data.tab_inputs, map_input_type)
+        
+        # Create InputContribution entry
+        new_input_contribution = InputContribution(
+            username=username,
+            tab_id=input_data.tab_id,
+            space_id=community_id,
+            input_list=input_list
+        )
+        db.add(new_input_contribution)
+        db.flush()  # Flush to get the ID
         
         db.commit()
         
@@ -814,7 +938,7 @@ async def submit_community_input(
         
         return CommunityInputResponse(
             message="Community input submitted successfully",
-            input_id=new_input_type.id
+            input_id=new_input_contribution.id
         )
         
     except HTTPException:
@@ -842,18 +966,10 @@ async def get_community_inputs_count(
                 detail=f"Community with ID {community_id} not found",
             )
         
-        from sqlalchemy import distinct
-        
-        # Create a subquery to get distinct combinations of creator_name and rounded timestamp
-        subquery = db.query(
-            InputType.creator_name,
-            func.date_trunc('second', InputType.created_at).label('created_at_rounded')
-        ).join(CommunityTab).filter(
-            CommunityTab.community_id == community_id
-        ).distinct().subquery()
-        
-        # Count the distinct combinations
-        count = db.query(func.count()).select_from(subquery).scalar()
+        # Count distinct input contributions (each contribution is one submission)
+        count = db.query(func.count(InputContribution.id)).filter(
+            InputContribution.space_id == community_id
+        ).scalar()
         
         return {"count": count or 0}
         
@@ -885,9 +1001,9 @@ async def get_community_inputs(
                 detail=f"Community with ID {community_id} not found",
             )
         
-        # Build query
-        query = db.query(InputType).join(CommunityTab).filter(
-            CommunityTab.community_id == community_id
+        # Build query for InputContribution
+        query = db.query(InputContribution).filter(
+            InputContribution.space_id == community_id
         )
         
         # Filter by tab if provided
@@ -902,57 +1018,17 @@ async def get_community_inputs(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Tab with ID {tab_id} not found in community {community_id}",
                 )
-            query = query.filter(InputType.tab_id == tab_id)
+            query = query.filter(InputContribution.tab_id == tab_id)
         
-        # Eager load items
-        inputs = query.options(
-            joinedload(InputType.items)
-        ).order_by(InputType.created_at.desc()).all()
+        # Get all input contributions
+        input_contributions = query.order_by(InputContribution.created_at.desc()).all()
         
-        # Build response with creator email and username
+        # Convert each contribution to InputTypeResponse format
         result = []
-        for input_type in inputs:
-            # Try to find the creator user by name
-            creator_user = None
-            if input_type.creator_name:
-                # Try to find user by matching name and surname
-                name_parts = input_type.creator_name.strip().split()
-                if len(name_parts) >= 2:
-                    # Try exact match first
-                    creator_user = db.query(User).filter(
-                        User.name == name_parts[0],
-                        User.surname == " ".join(name_parts[1:])
-                    ).first()
-                    # If not found, try case-insensitive match
-                    if not creator_user:
-                        creator_user = db.query(User).filter(
-                            func.lower(User.name) == name_parts[0].lower(),
-                            func.lower(User.surname) == " ".join(name_parts[1:]).lower()
-                        ).first()
-                elif len(name_parts) == 1:
-                    # Single word - could be username or first name
-                    # Try as username first
-                    creator_user = db.query(User).filter(User.username == name_parts[0]).first()
-                    # If not found, try as first name
-                    if not creator_user:
-                        creator_user = db.query(User).filter(
-                            func.lower(User.name) == name_parts[0].lower()
-                        ).first()
-            
-            # Create response dict with creator info
-            input_dict = {
-                "id": input_type.id,
-                "type": input_type.type,
-                "name": input_type.name,
-                "creator_name": input_type.creator_name,
-                "creator_username": creator_user.username if creator_user else None,
-                "creator_email": creator_user.email if creator_user else None,
-                "display_order": input_type.display_order,
-                "items": input_type.items,
-                "created_at": input_type.created_at,
-                "updated_at": input_type.updated_at,
-            }
-            result.append(InputTypeResponse.model_validate(input_dict))
+        for contribution in input_contributions:
+            # Convert input_list to list of InputTypeResponse objects
+            converted_inputs = convert_input_list_to_input_type_responses(contribution, db)
+            result.extend(converted_inputs)
         
         return result
         
@@ -987,77 +1063,84 @@ async def update_community_input(
                 detail=f"Tab with ID {input_data.tab_id} not found in community {community_id}",
             )
         
-        first_input = db.query(InputType).filter(InputType.id == input_id).first()
-        if not first_input:
+        # Find the input contribution by ID
+        input_contribution = db.query(InputContribution).filter(
+            InputContribution.id == input_id,
+            InputContribution.space_id == community_id,
+            InputContribution.tab_id == input_data.tab_id
+        ).first()
+        
+        if not input_contribution:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Input with ID {input_id} not found",
             )
         
-        if first_input.creator_name and first_input.creator_name != current_user.username and first_input.creator_name != f"{current_user.name} {current_user.surname}".strip():
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to update this input. Only the creator can update it.",
-            )
+        # Check permissions - verify user is the creator or admin
+        is_admin = current_user.username == "admin"
+        if not is_admin:
+            if input_contribution.username != current_user.username:
+                # Try to match by full name
+                user_full_name = f"{current_user.name} {current_user.surname}".strip()
+                creator_user = db.query(User).filter(User.username == input_contribution.username).first()
+                if creator_user:
+                    creator_full_name = f"{creator_user.name} {creator_user.surname}".strip()
+                    if creator_full_name != user_full_name:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="You do not have permission to update this input. Only the creator or admin can update it.",
+                        )
+                else:
+                    # If we can't find the user, check if username matches the creator name
+                    if input_contribution.username != user_full_name:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="You do not have permission to update this input. Only the creator or admin can update it.",
+                        )
         
-        created_time = first_input.created_at
-        timestamp_floor = created_time.replace(microsecond=0)
-        timestamp_ceil = timestamp_floor + timedelta(seconds=1)
-        
-        submission_inputs = db.query(InputType).filter(
-            InputType.tab_id == input_data.tab_id,
-            InputType.creator_name == first_input.creator_name,
-            InputType.created_at >= timestamp_floor,
-            InputType.created_at < timestamp_ceil
-        ).all()
-        
-        def map_input_type(input_type: str) -> str:
-            type_mapping = {
-                "dropdown": "dropdown list",
-                "multiselect": "multiple select",
-                "free text": "free text",
-                "date": "date"
-            }
-            return type_mapping.get(input_type, input_type)
-        
-        # Delete old input items
-        for old_input in submission_inputs:
-            db.query(InputTypeItem).filter(InputTypeItem.input_type_id == old_input.id).delete()
-            db.delete(old_input)
-        
-        db.flush()
-        
-        # Create new input types and items
-        creator_name = input_data.input_creator or f"{current_user.name} {current_user.surname}".strip()
-        
+        # Validate that all inputs have at least one selected field
         for tab_input in input_data.tab_inputs:
-            # Validate that selected_input_fields is not empty
             if not tab_input.selected_input_fields or len(tab_input.selected_input_fields) == 0:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"At least one selection is required for '{tab_input.input_title}'",
                 )
-            
-            # Create InputType entry
-            new_input_type = InputType(
-                community_id=community_id,
-                tab_id=input_data.tab_id,
-                type=map_input_type(tab_input.input_type),
-                name=tab_input.input_title,
-                creator_name=creator_name,
-                display_order=tab_input.input_id
-            )
-            db.add(new_input_type)
-            db.flush()  # Flush to get the input type ID
-            
-            # Create InputTypeItem entries for selected values
-            for item_order, selected_field in enumerate(tab_input.selected_input_fields):
-                new_item = InputTypeItem(
-                    input_type_id=new_input_type.id,
-                    value=selected_field.value,
-                    display_order=item_order
-                )
-                db.add(new_item)
+        
+        # Map input_type from frontend format
+        def map_input_type(input_type: str) -> str:
+            type_mapping = {
+                "dropdown": "dropdown",
+                "multiselect": "multiselect",
+                "free text": "free text",
+                "date": "date",
+                "url": "url",
+                "location": "location"
+            }
+            return type_mapping.get(input_type, input_type)
+        
+        # Get creator username
+        creator_name = input_data.input_creator or f"{current_user.name} {current_user.surname}".strip()
+        if creator_name == f"{current_user.name} {current_user.surname}".strip():
+            username = current_user.username
+        else:
+            # Try to find user by name
+            name_parts = creator_name.strip().split()
+            if len(name_parts) >= 2:
+                creator_user = db.query(User).filter(
+                    User.name == name_parts[0],
+                    User.surname == " ".join(name_parts[1:])
+                ).first()
+                username = creator_user.username if creator_user else creator_name
+            else:
+                username = creator_name
+        
+        # Build new input_list JSON structure
+        input_list = build_input_list_from_submission(input_data.tab_inputs, map_input_type)
+        
+        # Update the input contribution
+        input_contribution.input_list = input_list
+        input_contribution.username = username
+        # updated_at will be automatically set by the onupdate trigger
         
         db.commit()
         
@@ -1065,7 +1148,7 @@ async def update_community_input(
         
         return CommunityInputResponse(
             message="Community input updated successfully",
-            input_id=new_input_type.id
+            input_id=input_contribution.id
         )
         
     except HTTPException:
@@ -1087,9 +1170,13 @@ async def delete_community_input(
     db: Session = Depends(get_db)
 ):
     try:
-        # Find the first input
-        first_input = db.query(InputType).filter(InputType.id == input_id).first()
-        if not first_input:
+        # Find the input contribution by ID
+        input_contribution = db.query(InputContribution).filter(
+            InputContribution.id == input_id,
+            InputContribution.space_id == community_id
+        ).first()
+        
+        if not input_contribution:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Input with ID {input_id} not found",
@@ -1097,7 +1184,7 @@ async def delete_community_input(
         
         # Verify the tab belongs to the community
         tab = db.query(CommunityTab).filter(
-            CommunityTab.id == first_input.tab_id,
+            CommunityTab.id == input_contribution.tab_id,
             CommunityTab.community_id == community_id
         ).first()
         
@@ -1107,33 +1194,30 @@ async def delete_community_input(
                 detail=f"Input does not belong to community {community_id}",
             )
         
-        # Check if current user is the creator
-        if first_input.creator_name and first_input.creator_name != current_user.username and first_input.creator_name != f"{current_user.name} {current_user.surname}".strip():
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to delete this input. Only the creator can delete it.",
-            )
+        # Check if current user is the creator or admin
+        is_admin = current_user.username == "admin"
+        if not is_admin:
+            if input_contribution.username != current_user.username:
+                # Try to match by full name
+                user_full_name = f"{current_user.name} {current_user.surname}".strip()
+                creator_user = db.query(User).filter(User.username == input_contribution.username).first()
+                if creator_user:
+                    creator_full_name = f"{creator_user.name} {creator_user.surname}".strip()
+                    if creator_full_name != user_full_name:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="You do not have permission to delete this input. Only the creator or admin can delete it.",
+                        )
+                else:
+                    # If we can't find the user, check if username matches the creator name
+                    if input_contribution.username != user_full_name:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="You do not have permission to delete this input. Only the creator or admin can delete it.",
+                        )
         
-        # Find all inputs in the same submission (same creator, same timestamp within 1 second)
-        created_time = first_input.created_at
-        timestamp_floor = created_time.replace(microsecond=0)
-        timestamp_ceil = timestamp_floor + timedelta(seconds=1)
-        
-        submission_inputs = db.query(InputType).filter(
-            InputType.tab_id == first_input.tab_id,
-            InputType.creator_name == first_input.creator_name,
-            InputType.created_at >= timestamp_floor,
-            InputType.created_at < timestamp_ceil
-        ).all()
-        
-        # Delete all input items first (due to foreign key constraints)
-        for input_type in submission_inputs:
-            db.query(InputTypeItem).filter(InputTypeItem.input_type_id == input_type.id).delete()
-        
-        # Delete all input types in the submission
-        for input_type in submission_inputs:
-            db.delete(input_type)
-        
+        # Delete the input contribution
+        db.delete(input_contribution)
         db.commit()
         
         logger.info(f"Community input deleted: community {community_id}, input {input_id} by user {current_user.id}")

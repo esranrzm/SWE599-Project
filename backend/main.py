@@ -14,7 +14,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-from app.models import User, BlacklistedToken, Community, CommunityTab, InputType, InputTypeItem 
+from app.models import User, BlacklistedToken, Community, CommunityTab, InputContribution 
 
 Base.metadata.create_all(bind=engine)
 
