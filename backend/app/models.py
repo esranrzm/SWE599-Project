@@ -46,7 +46,6 @@ class Community(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationships - defined after all models are declared
     tabs = None
 
     def __repr__(self):
@@ -66,48 +65,27 @@ class CommunityTab(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationships - defined after all models are declared
-    input_types = None
-
     def __repr__(self):
         return f"<CommunityTab(id={self.id}, name='{self.name}', community_id={self.community_id})>"
 
 
-class InputType(Base):
-    __tablename__ = "input_types"
+class InputContribution(Base):
+    __tablename__ = "input_contributions"
 
     id = Column(Integer, primary_key=True, index=True)
-    community_id = Column(Integer, ForeignKey("communities.id", ondelete="CASCADE"), nullable=False, index=True)
+    username = Column(String(200), nullable=False, index=True)  # Creator username
     tab_id = Column(Integer, ForeignKey("community_tabs.id", ondelete="CASCADE"), nullable=False, index=True)
-    type = Column(String(50), nullable=False)  # 'free text', 'dropdown list', 'multiple select'
-    name = Column(String(200), nullable=False)
-    creator_name = Column(String(200), nullable=True)  # Name of the user who created this input
-    display_order = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
-    # Relationships - will be set after InputTypeItem is defined
-    items = None
-
-    def __repr__(self):
-        return f"<InputType(id={self.id}, type='{self.type}', name='{self.name}', tab_id={self.tab_id})>"
-
-
-class InputTypeItem(Base):
-    __tablename__ = "input_type_items"
-
-    id = Column(Integer, primary_key=True, index=True)
-    input_type_id = Column(Integer, ForeignKey("input_types.id", ondelete="CASCADE"), nullable=False, index=True)
-    value = Column(String(500), nullable=False)
-    display_order = Column(Integer, nullable=False, default=0)
+    space_id = Column(Integer, ForeignKey("communities.id", ondelete="CASCADE"), nullable=False, index=True)
+    input_list = Column(JSON, nullable=False)  # JSON array storing all input details
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    input_type = relationship("InputType", back_populates="items")
+    tab = relationship("CommunityTab", back_populates="input_contributions")
+    space = relationship("Community", back_populates="input_contributions")
 
     def __repr__(self):
-        return f"<InputTypeItem(id={self.id}, value='{self.value}', input_type_id={self.input_type_id})>"
+        return f"<InputContribution(id={self.id}, username='{self.username}', tab_id={self.tab_id}, space_id={self.space_id})>"
 
 
 # Set up relationships after all models are defined
@@ -119,19 +97,16 @@ Community.tabs = relationship(
 )
 
 CommunityTab.community = relationship("Community", back_populates="tabs")
-CommunityTab.input_types = relationship(
-    "InputType",
+CommunityTab.input_contributions = relationship(
+    "InputContribution",
     back_populates="tab",
-    cascade="all, delete-orphan",
-    order_by="InputType.display_order"
+    cascade="all, delete-orphan"
 )
 
-InputType.tab = relationship("CommunityTab", back_populates="input_types")
-InputType.items = relationship(
-    "InputTypeItem",
-    back_populates="input_type",
-    cascade="all, delete-orphan",
-    order_by="InputTypeItem.display_order"
+Community.input_contributions = relationship(
+    "InputContribution",
+    back_populates="space",
+    cascade="all, delete-orphan"
 )
 
 
