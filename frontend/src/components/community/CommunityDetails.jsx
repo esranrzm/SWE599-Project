@@ -43,9 +43,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
   }, [community?.tabs, community?.tabs_config]);
 
   const [selectedCategory, setSelectedCategory] = useState(() => {
-    if (communityTabs.length > 0) {
-      return communityTabs[0].id;
-    }
+    // Initialize with null - will be set by useEffect when tabs are loaded
     return null;
   });
   const [inputs, setInputs] = useState([]);
@@ -916,7 +914,20 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
 
   useEffect(() => {
     const fetchInputs = async () => {
-      if (!community?.id || !selectedCategory) {
+      // Wait for community ID, selected category, and ensure tabs are loaded
+      if (!community?.id || !selectedCategory || communityTabs.length === 0) {
+        setInputs([]);
+        return;
+      }
+
+      // Verify that selectedCategory is a valid tab ID
+      const isValidTab = communityTabs.some(tab => 
+        tab.id === selectedCategory || 
+        String(tab.id) === String(selectedCategory)
+      );
+      
+      if (!isValidTab) {
+        console.log('Selected category is not a valid tab, waiting for tabs to load...');
         setInputs([]);
         return;
       }
@@ -995,7 +1006,7 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     };
 
     fetchInputs();
-  }, [community?.id, selectedCategory]);
+  }, [community?.id, selectedCategory, communityTabs]);
 
   useEffect(() => {
     const fetchInputCount = async () => {
@@ -1037,12 +1048,19 @@ const CommunityDetails = ({ community, currentUser, onDeleteSuccess, onCommunity
     }
     
     if (communityTabs.length > 0) {
+      // If no category is selected, or the selected category is not valid, set to first tab
+      if (!selectedCategory) {
+        console.log('Setting selectedCategory to first tab (no category selected):', communityTabs[0].id);
+        setSelectedCategory(communityTabs[0].id);
+        return;
+      }
+      
       const tabExists = communityTabs.find(tab => 
         tab.id === selectedCategory || 
         String(tab.id) === String(selectedCategory)
       );
       if (!tabExists) {
-        console.log('Setting selectedCategory to first tab:', communityTabs[0].id);
+        console.log('Setting selectedCategory to first tab (invalid category):', communityTabs[0].id);
         setSelectedCategory(communityTabs[0].id);
       }
     } else if (selectedCategory !== null) {

@@ -446,6 +446,44 @@ export const getOthersCommunities = async (options = {}) => {
 };
 
 
+export const getContributedCommunities = async (options = {}) => {
+  try {
+    const token = getToken();
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    const { skip = 0, limit = 100 } = options;
+    const queryParams = new URLSearchParams();
+    if (skip > 0) queryParams.append('skip', skip);
+    if (limit !== 100) queryParams.append('limit', limit);
+
+    const queryString = queryParams.toString();
+    const url = `${API_BASE_URL}/communities/me/contributed${queryString ? `?${queryString}` : ''}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch contributed communities');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Get contributed communities error:', error);
+    throw error;
+  }
+};
+
+
 export const getCommunityById = async (communityId) => {
   try {
     const response = await fetch(`${API_BASE_URL}/communities/${communityId}`, {

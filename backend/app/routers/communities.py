@@ -307,6 +307,73 @@ async def get_others_communities(
         )
 
 
+@router.get("/me/contributed", response_model=List[CommunityResponse], status_code=status.HTTP_200_OK)
+async def get_contributed_communities(
+    current_user: User = Depends(get_current_user),
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    try:
+        if limit > 1000:
+            limit = 1000
+        if skip < 0:
+            skip = 0
+        if limit < 1:
+            limit = 100
+        
+        user_full_name = f"{current_user.name} {current_user.surname}".strip()
+        user_username = current_user.username
+        
+        contributed_community_ids = db.query(distinct(InputType.community_id))\
+            .filter(
+                (InputType.creator_name == user_full_name) |
+                (InputType.creator_name == user_username)
+            )\
+            .all()
+        
+        community_ids = [row[0] for row in contributed_community_ids]
+        
+        if not community_ids:
+            return []
+        
+        communities = db.query(Community)\
+            .options(
+                joinedload(Community.tabs)
+            )\
+            .filter(Community.id.in_(community_ids))\
+            .order_by(Community.created_at.desc())\
+            .offset(skip)\
+            .limit(limit)\
+            .all()
+        
+        result = []
+        for community in communities:
+            creator_user = db.query(User).filter(User.id == community.creator_id).first()
+            community_dict = {
+                "id": community.id,
+                "title": community.title,
+                "description": community.description,
+                "creator_id": community.creator_id,
+                "creator_name": community.creator_name,
+                "creator_username": creator_user.username if creator_user else None,
+                "creator_email": creator_user.email if creator_user else None,
+                "tabs": community.tabs,
+                "created_at": community.created_at,
+                "updated_at": community.updated_at,
+            }
+            result.append(CommunityResponse.model_validate(community_dict))
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error retrieving contributed communities: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while retrieving contributed communities: {str(e)}",
+        )
+
+
 @router.get("/user/{user_id}/created", response_model=List[CommunityResponse], status_code=status.HTTP_200_OK)
 async def get_user_communities(
     user_id: int,
@@ -766,15 +833,6 @@ async def get_community_inputs_count(
     community_id: int,
     db: Session = Depends(get_db)
 ):
-    """
-    Get the total count of input submissions for a community across all tabs.
-    
-    Public endpoint - no authentication required.
-    
-    - **community_id**: The ID of the community
-    
-    Returns the total number of input submissions (grouped by creator and timestamp).
-    """
     try:
         # Verify the community exists
         community = db.query(Community).filter(Community.id == community_id).first()
@@ -784,9 +842,6 @@ async def get_community_inputs_count(
                 detail=f"Community with ID {community_id} not found",
             )
         
-        # Count distinct input submissions
-        # Inputs are grouped by creator_name and created_at (rounded to seconds)
-        # We use a subquery to get distinct combinations, then count them
         from sqlalchemy import distinct
         
         # Create a subquery to get distinct combinations of creator_name and rounded timestamp
