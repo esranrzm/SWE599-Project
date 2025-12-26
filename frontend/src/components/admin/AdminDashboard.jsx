@@ -536,67 +536,69 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
                   }}
                 />
               </div>
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'center' }}>Title</th>
-                    <th 
-                      className="sortable-header"
-                      onClick={() => handleSort('creator')}
-                      style={{ cursor: 'pointer', textAlign: 'center' }}
-                    >
-                      Community owner {getSortIndicator('creator')}
-                    </th>
-                    <th 
-                      className="sortable-header"
-                      onClick={() => handleSort('created_at')}
-                      style={{ cursor: 'pointer', textAlign: 'center' }}
-                    >
-                      Created At {getSortIndicator('created_at')}
-                    </th>
-                    <th 
-                      className="sortable-header"
-                      onClick={() => handleSort('number_of_tabs')}
-                      style={{ cursor: 'pointer', textAlign: 'center' }}
-                    >
-                      Number of tabs {getSortIndicator('number_of_tabs')}
-                    </th>
-                    <th style={{ textAlign: 'center' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAndSortedCommunities.map((community) => (
-                    <tr key={community.id}>
-                      <td className="title-cell" style={{ textAlign: 'center' }} title={community.title}>{community.title}</td>
-                      <td style={{ textAlign: 'center' }}>{community.creator_username || community.creator_name}</td>
-                      <td style={{ textAlign: 'center' }}>{formatDate(community.created_at)}</td>
-                      <td style={{ textAlign: 'center' }}>{community.tabs ? community.tabs.length : 0}</td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button
-                          className="action-button delete-button"
-                          onClick={() => handleDeleteCommunity(community)}
-                          title="Delete"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          </svg>
-                        </button>
-                        <button
-                          className="action-button view-button"
-                          onClick={() => handleViewCommunity(community)}
-                          title="View"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                          </svg>
-                        </button>
-                      </td>
+              <div className="table-container">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'center' }}>Title</th>
+                      <th 
+                        className="sortable-header"
+                        onClick={() => handleSort('creator')}
+                        style={{ cursor: 'pointer', textAlign: 'center' }}
+                      >
+                        Community owner {getSortIndicator('creator')}
+                      </th>
+                      <th 
+                        className="sortable-header"
+                        onClick={() => handleSort('created_at')}
+                        style={{ cursor: 'pointer', textAlign: 'center' }}
+                      >
+                        Created At {getSortIndicator('created_at')}
+                      </th>
+                      <th 
+                        className="sortable-header"
+                        onClick={() => handleSort('number_of_tabs')}
+                        style={{ cursor: 'pointer', textAlign: 'center' }}
+                      >
+                        Number of tabs {getSortIndicator('number_of_tabs')}
+                      </th>
+                      <th style={{ textAlign: 'center' }}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filteredAndSortedCommunities.map((community) => (
+                      <tr key={community.id}>
+                        <td className="title-cell" style={{ textAlign: 'center' }} title={community.title}>{community.title}</td>
+                        <td style={{ textAlign: 'center' }}>{community.creator_username || community.creator_name}</td>
+                        <td style={{ textAlign: 'center' }}>{formatDate(community.created_at)}</td>
+                        <td style={{ textAlign: 'center' }}>{community.tabs ? community.tabs.length : 0}</td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            className="action-button delete-button"
+                            onClick={() => handleDeleteCommunity(community)}
+                            title="Delete"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                          </button>
+                          <button
+                            className="action-button view-button"
+                            onClick={() => handleViewCommunity(community)}
+                            title="View"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {filteredAndSortedCommunities.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
                   {communitySearchQuery ? 'No communities found matching your search.' : 'No communities found.'}
@@ -625,71 +627,73 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
                   }}
                 />
               </div>
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th 
-                      className="sortable-header"
-                      onClick={() => handleUserSort('name')}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      Name {getUserSortIndicator('name')}
-                    </th>
-                    <th 
-                      className="sortable-header"
-                      onClick={() => handleUserSort('surname')}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      Surname {getUserSortIndicator('surname')}
-                    </th>
-                    <th 
-                      className="sortable-header"
-                      onClick={() => handleUserSort('username')}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      Username {getUserSortIndicator('username')}
-                    </th>
-                    <th 
-                      className="sortable-header"
-                      onClick={() => handleUserSort('date_of_birth')}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      Date of Birth {getUserSortIndicator('date_of_birth')}
-                    </th>
-                    <th>Occupation</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAndSortedUsers.map((user) => {
-                    let dateOfBirth = null;
-                    if (user.date_of_birth) {
-                      dateOfBirth = String(user.date_of_birth).split('T')[0];
-                    }
-                    return (
-                      <tr key={user.id}>
-                        <td>{user.name}</td>
-                        <td>{user.surname}</td>
-                        <td>{user.username}</td>
-                        <td>{dateOfBirth || '-'}</td>
-                        <td>{user.profession || '-'}</td>
-                        <td>
-                          <button
-                            className="action-button delete-button"
-                            onClick={() => handleDeleteUser(user)}
-                            title="Delete"
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            </svg>
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="table-container">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th 
+                        className="sortable-header"
+                        onClick={() => handleUserSort('name')}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        Name {getUserSortIndicator('name')}
+                      </th>
+                      <th 
+                        className="sortable-header"
+                        onClick={() => handleUserSort('surname')}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        Surname {getUserSortIndicator('surname')}
+                      </th>
+                      <th 
+                        className="sortable-header"
+                        onClick={() => handleUserSort('username')}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        Username {getUserSortIndicator('username')}
+                      </th>
+                      <th 
+                        className="sortable-header"
+                        onClick={() => handleUserSort('date_of_birth')}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        Date of Birth {getUserSortIndicator('date_of_birth')}
+                      </th>
+                      <th>Occupation</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAndSortedUsers.map((user) => {
+                      let dateOfBirth = null;
+                      if (user.date_of_birth) {
+                        dateOfBirth = String(user.date_of_birth).split('T')[0];
+                      }
+                      return (
+                        <tr key={user.id}>
+                          <td>{user.name}</td>
+                          <td>{user.surname}</td>
+                          <td>{user.username}</td>
+                          <td>{dateOfBirth || '-'}</td>
+                          <td>{user.profession || '-'}</td>
+                          <td>
+                            <button
+                              className="action-button delete-button"
+                              onClick={() => handleDeleteUser(user)}
+                              title="Delete"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
               {filteredAndSortedUsers.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
                   {userSearchQuery ? 'No users found matching your search.' : 'No users found.'}
@@ -718,49 +722,51 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
                   }}
                 />
               </div>
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>Tab Name</th>
-                    <th 
-                      className="sortable-header"
-                      onClick={() => handleTabSort('community_id')}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      Community ID {getTabSortIndicator('community_id')}
-                    </th>
-                    <th 
-                      className="sortable-header"
-                      onClick={() => handleTabSort('number_of_inputs')}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      Number of Inputs {getTabSortIndicator('number_of_inputs')}
-                    </th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAndSortedTabs.map((tab) => (
-                    <tr key={tab.id}>
-                      <td>{tab.name}</td>
-                      <td>{tab.community_id}</td>
-                      <td>{tab.input_count}</td>
-                      <td>
-                        <button
-                          className="action-button view-button"
-                          onClick={() => handleViewTab(tab)}
-                          title="View Tab"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                          </svg>
-                        </button>
-                      </td>
+              <div className="table-container">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Tab Name</th>
+                      <th 
+                        className="sortable-header"
+                        onClick={() => handleTabSort('community_id')}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        Community ID {getTabSortIndicator('community_id')}
+                      </th>
+                      <th 
+                        className="sortable-header"
+                        onClick={() => handleTabSort('number_of_inputs')}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        Number of Inputs {getTabSortIndicator('number_of_inputs')}
+                      </th>
+                      <th>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filteredAndSortedTabs.map((tab) => (
+                      <tr key={tab.id}>
+                        <td>{tab.name}</td>
+                        <td>{tab.community_id}</td>
+                        <td>{tab.input_count}</td>
+                        <td>
+                          <button
+                            className="action-button view-button"
+                            onClick={() => handleViewTab(tab)}
+                            title="View Tab"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {filteredAndSortedTabs.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
                   {tabSearchQuery ? 'No tabs found matching your search.' : 'No tabs found.'}
