@@ -31,7 +31,7 @@ const Header = ({ isLoggedIn, isAdmin, onLogout, onCreateCommunity, onSelectProf
     <header className="header">
       <div className="header-content">
         <div className="header-left">
-          <h1 className="header-title">My App</h1>
+          <h1 className="header-title">ComHub</h1>
           {isLoggedIn && !isAdmin && (
             <button 
               className="home-button"

@@ -11,4 +11,6 @@ pydantic-settings
 email-validator
 requests
 httpx
+pytest
+pytest-asyncio
 
