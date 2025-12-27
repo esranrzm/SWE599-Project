@@ -120,6 +120,11 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
   };
 
   const handleDeleteUser = (user) => {
+    // Prevent deletion of the protected admin user (username: admin)
+    if (user.username === "admin") {
+      setError("Cannot delete the default admin user");
+      return;
+    }
     setUserToDelete(user);
     setShowDeleteUserDialog(true);
   };
@@ -669,6 +674,9 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
                       if (user.date_of_birth) {
                         dateOfBirth = String(user.date_of_birth).split('T')[0];
                       }
+                      // Check if this is the protected admin user (username: admin)
+                      const isProtectedAdmin = user.username === "admin";
+                      
                       return (
                         <tr key={user.id}>
                           <td>{user.name}</td>
@@ -680,7 +688,12 @@ const AdminDashboard = ({ onOpenCommunity, onLogout, onNavigateToHome }) => {
                             <button
                               className="action-button delete-button"
                               onClick={() => handleDeleteUser(user)}
-                              title="Delete"
+                              title={isProtectedAdmin ? "Cannot delete default admin user" : "Delete"}
+                              disabled={isProtectedAdmin}
+                              style={{
+                                opacity: isProtectedAdmin ? 0.5 : 1,
+                                cursor: isProtectedAdmin ? 'not-allowed' : 'pointer'
+                              }}
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <polyline points="3 6 5 6 21 6" />

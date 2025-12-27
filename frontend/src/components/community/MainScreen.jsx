@@ -147,7 +147,7 @@ const MainScreen = ({ onOpenCommunity }) => {
     <div className="main-screen">
       <div className="main-content">
         <div className="welcome-section">
-          <h1 className="welcome-title">Welcome to My App</h1>
+          <h1 className="welcome-title">Welcome to ComHub</h1>
           <p className="welcome-subtitle">
             You have successfully logged in! This is your main dashboard.
           </p>

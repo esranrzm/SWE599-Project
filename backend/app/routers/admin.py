@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models import User, Community, CommunityTab, InputContribution
 from app.schemas import UserResponse, CommunityResponse
 from app.dependencies import get_current_user
+from app.utils import verify_password
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -173,6 +174,13 @@ async def delete_user_admin(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"User with ID {user_id} not found"
+            )
+        
+        # Prevent deletion of the default admin user
+        if user.username == "admin" and verify_password("admin123", user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete the default admin user"
             )
         
         # Delete the user (communities and inputs remain due to foreign key constraints)
