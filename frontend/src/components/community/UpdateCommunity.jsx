@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './CreateCommunity.css';
-import { createCommunity } from '../../services/api';
+import { updateCommunityWithTabs, getCommunityById } from '../../services/api';
 
-const CreateCommunity = ({ onCommunityCreated }) => {
+const UpdateCommunity = ({ community, onUpdateSuccess }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [tabs, setTabs] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   const [newTabName, setNewTabName] = useState('');
   const [newTabColor, setNewTabColor] = useState('#f97316');
@@ -25,6 +26,10 @@ const CreateCommunity = ({ onCommunityCreated }) => {
   const [addItemsDialogInput, setAddItemsDialogInput] = useState('');
   const [addItemsDialogError, setAddItemsDialogError] = useState('');
 
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+
   const MAX_TITLE_LENGTH = 200;
   const MAX_DESCRIPTION_LENGTH = 500;
   const MAX_TABS = 10;
@@ -35,6 +40,80 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     }
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   };
+
+  const mapInputTypeFromAPI = (type) => {
+    const typeMapping = {
+      "dropdown": "dropdown list",
+      "multiselect": "multiple select",
+      "free text": "free text",
+      "date": "date",
+      "url": "url",
+      "location": "location"
+    };
+    return typeMapping[type] || type;
+  };
+
+  const mapInputTypeToAPI = (type) => {
+    return type;
+  };
+
+  // Load community data
+  useEffect(() => {
+    const loadCommunity = async () => {
+      if (!community?.id) {
+        setError('Community not found');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        const fullCommunity = await getCommunityById(community.id);
+        
+        setTitle(fullCommunity.title || '');
+        setDescription(fullCommunity.description || '');
+
+        const convertedTabs = (fullCommunity.tabs || []).map((tab) => {
+          const tabFormStructure = tab.tab_form_structure || {};
+          const tabInputs = tabFormStructure.tab_inputs || [];
+          
+          const inputTypes = tabInputs.map((input, idx) => {
+            const inputType = mapInputTypeFromAPI(input.input_type);
+            const items = input.input_fields 
+              ? input.input_fields.map(field => field.value || field)
+              : [];
+            
+            return {
+              id: createId(),
+              type: inputType,
+              name: input.input_title || '',
+              items: items,
+              originalInputId: input.input_id !== undefined ? input.input_id : idx // Keep track of original input_id (index in tab_form_structure)
+            };
+          });
+
+          return {
+            id: tab.id,
+            name: tab.name || '',
+            color: tab.color || '#f97316',
+            description: tab.description || null,
+            inputTypes: inputTypes
+          };
+        });
+
+        setTabs(convertedTabs);
+        setExpandedTabs(new Set(convertedTabs.map(tab => tab.id)));
+        setError(null);
+      } catch (err) {
+        console.error('Error loading community:', err);
+        setError(err.message || 'Failed to load community data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadCommunity();
+  }, [community?.id]);
 
   const getInputState = (tabId) => {
     if (!inputStates[tabId]) {
@@ -92,6 +171,12 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     setExpandedTabs(prev => new Set([...prev, newTab.id]));
   };
 
+  const handleUpdateTab = (tabId, updates) => {
+    setTabs(tabs.map(tab => 
+      tab.id === tabId ? { ...tab, ...updates } : tab
+    ));
+  };
+
   const toggleTabExpansion = (tabId) => {
     setExpandedTabs(prev => {
       const newSet = new Set(prev);
@@ -122,7 +207,6 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     });
   };
 
-
   const handleAddItem = (tabId) => {
     const state = getInputState(tabId);
     if (state.currentInputValue.trim()) {
@@ -140,19 +224,35 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     updateInputState(tabId, { currentItems: updatedItems });
   };
 
-  const handleEditItem = (tabId, index) => {
-    const state = getInputState(tabId);
-    setEditingInputItemInputId(tabId);
-    setEditingInputItemIndex(index);
-    setEditingInputItemValue(state.currentItems[index]);
+  const handleEditItem = (tabId, inputId, index) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    const input = tab.inputTypes.find(i => i.id === inputId);
+    if (input && input.items[index]) {
+      setEditingInputItemInputId(inputId);
+      setEditingInputItemIndex(index);
+      setEditingInputItemValue(input.items[index]);
+    }
   };
 
-  const handleSaveItem = (tabId, index) => {
+  const handleSaveItem = (tabId, inputId, index) => {
     if (editingInputItemValue.trim()) {
-      const state = getInputState(tabId);
-      const updatedItems = [...state.currentItems];
-      updatedItems[index] = editingInputItemValue.trim();
-      updateInputState(tabId, { currentItems: updatedItems });
+      setTabs(tabs.map(tab => {
+        if (tab.id === tabId) {
+          return {
+            ...tab,
+            inputTypes: tab.inputTypes.map(input => {
+              if (input.id === inputId) {
+                const updatedItems = [...input.items];
+                updatedItems[index] = editingInputItemValue.trim();
+                return { ...input, items: updatedItems };
+              }
+              return input;
+            })
+          };
+        }
+        return tab;
+      }));
       setEditingInputItemInputId(null);
       setEditingInputItemIndex(null);
       setEditingInputItemValue('');
@@ -294,39 +394,73 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     return false;
   };
 
-  const [isCreating, setIsCreating] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
+  const validateForm = () => {
+    const errors = [];
 
-  const isCreateDisabled = () => {
-    return !title.trim() || !description.trim() || isCreating;
+    if (!title.trim()) {
+      errors.push('Title must be non-empty');
+    }
+
+    if (!description.trim()) {
+      errors.push('Description must be non-empty');
+    }
+
+    tabs.forEach((tab, tabIndex) => {
+      if (!tab.name.trim()) {
+        errors.push(`Tab ${tabIndex + 1}: Name must be non-empty`);
+      }
+
+      if (tab.description && !tab.description.trim()) {
+        errors.push(`Tab "${tab.name}": Description must be non-empty if provided`);
+      }
+
+      tab.inputTypes.forEach((input, inputIndex) => {
+        if (!input.name.trim()) {
+          errors.push(`Tab "${tab.name}", Input ${inputIndex + 1}: Name must be non-empty`);
+        }
+
+        if (input.type === 'dropdown list' || input.type === 'multiple select') {
+          input.items.forEach((item, itemIndex) => {
+            if (!item || !item.trim()) {
+              errors.push(`Tab "${tab.name}", Input "${input.name}", Field ${itemIndex + 1}: Field name must be non-empty`);
+            }
+          });
+        }
+      });
+    });
+
+    return errors;
   };
 
-  const handleCreate = async () => {
-    if (isCreateDisabled()) {
+  const handleUpdate = async () => {
+    const validationErrors = validateForm();
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join('. '));
       return;
     }
 
     setError(null);
     setSuccess(null);
-    setIsCreating(true);
+    setIsUpdating(true);
 
     try {
-      const tabsData = tabs.length > 0 ? tabs.map((tab, tabIndex) => ({
-        name: tab.name,
+      const tabsData = tabs.map((tab, tabIndex) => ({
+        id: typeof tab.id === 'number' ? tab.id : null, // Only include ID for existing tabs
+        name: tab.name.trim(),
         color: tab.color,
-        description: tab.description || null,
+        description: tab.description ? tab.description.trim() : null,
         display_order: tabIndex,
         inputTypes: tab.inputTypes.map((input, inputIndex) => ({
-          type: input.type,
-          name: input.name,
+          id: input.originalInputId !== undefined && input.originalInputId !== null ? input.originalInputId : null, // Keep original input_id (index) if exists
+          type: mapInputTypeToAPI(input.type),
+          name: input.name.trim(),
           display_order: inputIndex,
           items: input.items.map((item, itemIndex) => ({
-            value: item,
+            value: item.trim(),
             display_order: itemIndex
           }))
         }))
-      })) : null;
+      }));
 
       const communityData = {
         title: title.trim(),
@@ -334,39 +468,20 @@ const CreateCommunity = ({ onCommunityCreated }) => {
         tabs: tabsData
       };
 
-      const response = await createCommunity(communityData);
+      await updateCommunityWithTabs(community.id, communityData);
       
-      setSuccess(`Community "${response.title}" created successfully!`);
-      
-      const mappedCommunity = {
-        id: response.id,
-        title: response.title,
-        description: response.description,
-        creator: response.creator_name,
-        creator_id: response.creator_id,
-        createdAt: response.created_at,
-        updatedAt: response.updated_at,
-        tabs_config: response.tabs || null,
-      };
-      
-      setTitle('');
-      setDescription('');
-      setTabs([]);
-      setExpandedTabs(new Set());
-      setInputStates({});
+      setSuccess('Community updated successfully!');
       
       setTimeout(() => {
-        if (onCommunityCreated) {
-          onCommunityCreated(mappedCommunity);
+        if (onUpdateSuccess) {
+          onUpdateSuccess();
         }
       }, 1000);
-      
-      console.log('Community created:', response);
     } catch (err) {
-      setError(err.message || 'Failed to create community. Please try again.');
-      console.error('Error creating community:', err);
+      setError(err.message || 'Failed to update community. Please try again.');
+      console.error('Error updating community:', err);
     } finally {
-      setIsCreating(false);
+      setIsUpdating(false);
     }
   };
 
@@ -424,14 +539,12 @@ const CreateCommunity = ({ onCommunityCreated }) => {
       return;
     }
 
-    
     const state = getInputState(addItemsDialogTabId);
     const updatedItems = [...state.currentItems, ...validation.items];
     updateInputState(addItemsDialogTabId, {
       currentItems: updatedItems
     });
 
-    // Close dialog
     handleCloseAddItemsDialog();
   };
 
@@ -442,10 +555,26 @@ const CreateCommunity = ({ onCommunityCreated }) => {
     return state.currentInputType;
   };
 
+  const isUpdateDisabled = () => {
+    return !title.trim() || !description.trim() || isUpdating || isLoading;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="create-community">
+        <div className="create-community-card">
+          <div style={{ textAlign: 'center', padding: '2rem' }}>
+            <p>Loading community data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="create-community">
       <div className="create-community-card">
-        <h1 className="create-title">Create Community</h1>
+        <h1 className="create-title">Update Community</h1>
         
         {/* Community Title Section */}
         <div className="form-section">
@@ -461,6 +590,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
               }
             }}
             maxLength={MAX_TITLE_LENGTH}
+            disabled={isUpdating}
           />
           <div className="character-count">
             {title.length} / {MAX_TITLE_LENGTH}
@@ -481,6 +611,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
             }}
             maxLength={MAX_DESCRIPTION_LENGTH}
             rows={6}
+            disabled={isUpdating}
           />
           <div className="character-count">
             {description.length} / {MAX_DESCRIPTION_LENGTH}
@@ -491,7 +622,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
         <div className="form-section">
           <h2 className="section-title">Community Input Tabs</h2>
           <p className="section-description">
-            Create tabs to organize different types of community inputs. Each tab can have its own input types.
+            Update tabs to organize different types of community inputs. Each tab can have its own input types.
           </p>
 
           {/* Display created tabs */}
@@ -531,6 +662,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                             handleDeleteTab(tab.id);
                           }}
                           title="Delete tab"
+                          disabled={isUpdating}
                         >
                           ×
                         </button>
@@ -538,6 +670,44 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                     </div>
                     {isExpanded && (
                       <>
+                        {/* Tab editing fields */}
+                        <div style={{ padding: '1rem', background: '#f9fafb', borderTop: '1px solid #e5e7eb' }}>
+                          <div className="input-form-row-single">
+                            <div className="input-field-group">
+                              <label className="input-label">Tab Name</label>
+                              <input
+                                type="text"
+                                className="form-input"
+                                value={tab.name}
+                                onChange={(e) => handleUpdateTab(tab.id, { name: e.target.value })}
+                                placeholder="Enter tab name"
+                                disabled={isUpdating}
+                              />
+                            </div>
+                            <div className="input-field-group">
+                              <label className="input-label">Tab Color</label>
+                              <input
+                                type="color"
+                                className="form-input-color"
+                                value={tab.color}
+                                onChange={(e) => handleUpdateTab(tab.id, { color: e.target.value })}
+                                disabled={isUpdating}
+                              />
+                            </div>
+                          </div>
+                          <div className="input-field-group" style={{ marginTop: '1rem' }}>
+                            <label className="input-label">Tab Description (Optional)</label>
+                            <textarea
+                              className="form-textarea"
+                              value={tab.description || ''}
+                              onChange={(e) => handleUpdateTab(tab.id, { description: e.target.value })}
+                              placeholder="Describe what content should be added in this tab..."
+                              rows={2}
+                              disabled={isUpdating}
+                            />
+                          </div>
+                        </div>
+
                         {tab.description && (
                           <p className="tab-description">{tab.description}</p>
                         )}
@@ -554,13 +724,14 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                                     <button
                                       className="edit-input-btn"
                                       onClick={() => handleEditInput(tab.id, input.id)}
-                                      disabled={inputState.editingInputId === input.id}
+                                      disabled={inputState.editingInputId === input.id || isUpdating}
                                     >
                                       Edit
                                     </button>
                                     <button
                                       className="delete-input-btn"
                                       onClick={() => handleDeleteInput(tab.id, input.id)}
+                                      disabled={isUpdating}
                                     >
                                       ×
                                     </button>
@@ -569,7 +740,76 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                                 {input.items.length > 0 && (
                                   <div className="added-input-items">
                                     {input.items.map((item, idx) => (
-                                      <span key={idx} className="added-item-tag">{item}</span>
+                                      <div key={idx} className="added-item-tag">
+                                        {editingInputItemInputId === input.id && editingInputItemIndex === idx ? (
+                                          <div className="edit-item-input-wrapper">
+                                            <input
+                                              type="text"
+                                              className="edit-item-input"
+                                              value={editingInputItemValue}
+                                              onChange={(e) => setEditingInputItemValue(e.target.value)}
+                                              onKeyPress={(e) => {
+                                                if (e.key === 'Enter') {
+                                                  e.preventDefault();
+                                                  handleSaveItem(tab.id, input.id, idx);
+                                                }
+                                              }}
+                                            />
+                                            <button
+                                              className="save-item-btn"
+                                              onClick={() => handleSaveItem(tab.id, input.id, idx)}
+                                            >
+                                              ✓
+                                            </button>
+                                            <button
+                                              className="cancel-item-btn"
+                                              onClick={() => {
+                                                setEditingInputItemInputId(null);
+                                                setEditingInputItemIndex(null);
+                                                setEditingInputItemValue('');
+                                              }}
+                                            >
+                                              ×
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="item-tag-content">
+                                            <span className="item-tag-name">Ex: {item}</span>
+                                            <button
+                                              className="edit-item-btn"
+                                              onClick={() => handleEditItem(tab.id, input.id, idx)}
+                                              disabled={isUpdating}
+                                            >
+                                              Edit
+                                            </button>
+                                            <button
+                                              className="delete-item-btn"
+                                              onClick={() => {
+                                                setTabs(tabs.map(t => {
+                                                  if (t.id === tab.id) {
+                                                    return {
+                                                      ...t,
+                                                      inputTypes: t.inputTypes.map(inp => {
+                                                        if (inp.id === input.id) {
+                                                          return {
+                                                            ...inp,
+                                                            items: inp.items.filter((_, i) => i !== idx)
+                                                          };
+                                                        }
+                                                        return inp;
+                                                      })
+                                                    };
+                                                  }
+                                                  return t;
+                                                }));
+                                              }}
+                                              disabled={isUpdating}
+                                            >
+                                              ×
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
                                     ))}
                                   </div>
                                 )}
@@ -592,6 +832,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                                 value={inputState.currentInputName}
                                 onChange={(e) => updateInputState(tab.id, { currentInputName: e.target.value })}
                                 placeholder="Enter input title"
+                                disabled={isUpdating}
                               />
                             </div>
                             <div className="input-field-group">
@@ -600,6 +841,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                                 className="form-select"
                                 value={inputState.currentInputType}
                                 onChange={(e) => handleInputTypeChange(tab.id, e.target.value)}
+                                disabled={isUpdating}
                               >
                                 <option value="">Select input type</option>
                                 <option value="free text">Free Text</option>
@@ -623,6 +865,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                                   className="btn-add-items-at-once"
                                   onClick={() => handleOpenAddItemsDialog(tab.id)}
                                   title="Add multiple items at once"
+                                  disabled={isUpdating}
                                 >
                                   add items at once
                                 </button>
@@ -643,13 +886,14 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                                         }
                                       }}
                                       placeholder="Enter field value"
+                                      disabled={isUpdating}
                                     />
                                   </div>
                                   <div className="add-item-button-wrapper">
                                     <button
                                       className="btn-add-item"
                                       onClick={() => handleAddItem(tab.id)}
-                                      disabled={!inputState.currentInputValue.trim()}
+                                      disabled={!inputState.currentInputValue.trim() || isUpdating}
                                     >
                                       Add Item
                                     </button>
@@ -662,56 +906,27 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                                       <div className="items-box">
                                         {inputState.currentItems.map((item, index) => (
                                           <div key={index} className="item-card">
-                                            {editingInputItemInputId === tab.id && editingInputItemIndex === index ? (
-                                              <div className="edit-item-input-wrapper">
-                                                <input
-                                                  type="text"
-                                                  className="edit-item-input"
-                                                  value={editingInputItemValue}
-                                                  onChange={(e) => setEditingInputItemValue(e.target.value)}
-                                                  onKeyPress={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                      e.preventDefault();
-                                                      handleSaveItem(tab.id, index);
-                                                    }
-                                                  }}
-                                                />
-                                                <button
-                                                  className="save-item-btn"
-                                                  onClick={() => handleSaveItem(tab.id, index)}
-                                                >
-                                                  ✓
-                                                </button>
-                                                <button
-                                                  className="cancel-item-btn"
-                                                  onClick={() => {
-                                                    setEditingInputItemInputId(null);
-                                                    setEditingInputItemIndex(null);
-                                                    setEditingInputItemValue('');
-                                                  }}
-                                                >
-                                                  ×
-                                                </button>
-                                              </div>
-                                            ) : (
-                                              <>
-                                                <span>Ex: {item}</span>
-                                                <div className="item-actions">
-                                                  <button
-                                                    className="edit-item-btn"
-                                                    onClick={() => handleEditItem(tab.id, index)}
-                                                  >
-                                                    Edit
-                                                  </button>
-                                                  <button
-                                                    className="delete-item-btn"
-                                                    onClick={() => handleDeleteItem(tab.id, index)}
-                                                  >
-                                                    ×
-                                                  </button>
-                                                </div>
-                                              </>
-                                            )}
+                                            <span>Ex: {item}</span>
+                                            <div className="item-actions">
+                                              <button
+                                                className="edit-item-btn"
+                                                onClick={() => {
+                                                  setEditingInputItemInputId(tab.id);
+                                                  setEditingInputItemIndex(index);
+                                                  setEditingInputItemValue(item);
+                                                }}
+                                                disabled={isUpdating}
+                                              >
+                                                Edit
+                                              </button>
+                                              <button
+                                                className="delete-item-btn"
+                                                onClick={() => handleDeleteItem(tab.id, index)}
+                                                disabled={isUpdating}
+                                              >
+                                                ×
+                                              </button>
+                                            </div>
                                           </div>
                                         ))}
                                       </div>
@@ -727,7 +942,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                             <button
                               className="btn-save-field"
                               onClick={() => handleAddInput(tab.id)}
-                              disabled={isAddInputDisabled(tab.id)}
+                              disabled={isAddInputDisabled(tab.id) || isUpdating}
                             >
                               {inputState.editingInputId ? 'Update Field' : 'Save Field'}
                             </button>
@@ -735,6 +950,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                               <button
                                 className="btn-cancel-edit"
                                 onClick={() => resetInputState(tab.id)}
+                                disabled={isUpdating}
                               >
                                 Cancel
                               </button>
@@ -762,6 +978,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                     value={newTabName}
                     onChange={(e) => setNewTabName(e.target.value)}
                     placeholder="Enter tab name"
+                    disabled={isUpdating}
                   />
                 </div>
                 <div className="input-field-group">
@@ -771,6 +988,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                     className="form-input-color"
                     value={newTabColor}
                     onChange={(e) => setNewTabColor(e.target.value)}
+                    disabled={isUpdating}
                   />
                 </div>
               </div>
@@ -782,13 +1000,14 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                   onChange={(e) => setNewTabDescription(e.target.value)}
                   placeholder="Describe what content should be added in this tab..."
                   rows={2}
+                  disabled={isUpdating}
                 />
               </div>
               <div className="tab-form-actions">
                 <button
                   className="btn-add-tab"
                   onClick={handleAddTab}
-                  disabled={!newTabName.trim()}
+                  disabled={!newTabName.trim() || isUpdating}
                 >
                   Create Tab
                 </button>
@@ -800,6 +1019,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                     setNewTabColor('#f97316');
                     setNewTabDescription('');
                   }}
+                  disabled={isUpdating}
                 >
                   Cancel
                 </button>
@@ -817,7 +1037,7 @@ const CreateCommunity = ({ onCommunityCreated }) => {
                     setShowTabForm(true);
                   }
                 }}
-                disabled={tabs.length >= MAX_TABS}
+                disabled={tabs.length >= MAX_TABS || isUpdating}
               >
                 + Create New Tab
               </button>
@@ -842,14 +1062,14 @@ const CreateCommunity = ({ onCommunityCreated }) => {
           </div>
         )}
 
-        {/* Create Button */}
+        {/* Update Button */}
         <div className="create-button-container">
           <button
             className="btn-create"
-            onClick={handleCreate}
-            disabled={isCreateDisabled()}
+            onClick={handleUpdate}
+            disabled={isUpdateDisabled()}
           >
-            {isCreating ? 'Creating...' : 'Create'}
+            {isUpdating ? 'Updating...' : 'Update Community'}
           </button>
         </div>
       </div>
@@ -902,4 +1122,5 @@ const CreateCommunity = ({ onCommunityCreated }) => {
   );
 };
 
-export default CreateCommunity;
+export default UpdateCommunity;
+

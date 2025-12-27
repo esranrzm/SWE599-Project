@@ -22,7 +22,6 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
   const [updateError, setUpdateError] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
-  // Fetch user data from API on component mount
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -37,15 +36,14 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
           return;
         }
 
-        console.log('Fetching user data from /api/auth/me...'); // Debug log
+        console.log('Fetching user data from /api/auth/me...');
         const userData = await getCurrentUser();
-        console.log('Fetched user data:', userData); // Debug log
+        console.log('Fetched user data:', userData);
         setUser(userData);
         setError(null);
       } catch (err) {
         console.error('Error fetching user data:', err);
         setError(err.message || 'Failed to load user profile');
-        // Fallback to initialUser if API call fails
         if (initialUser) {
           setUser(initialUser);
         }
@@ -55,7 +53,7 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
     };
 
     fetchUserData();
-  }, []); // Empty dependency array - fetch once on mount
+  }, []);
 
   if (loading) {
     return (
@@ -90,27 +88,21 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
 
   const { email, name, surname, username, profession, dateOfBirth } = user;
 
-  // Debug: Log the user object to see what we have
   console.log('Profile component - user object:', user);
   console.log('Profile component - dateOfBirth value:', dateOfBirth, 'type:', typeof dateOfBirth);
 
-  // Always use default avatar icon
   const displayPhoto = avatarDefault;
 
-  // Format date of birth for display
   const formatDateOfBirth = (dateStr) => {
-    console.log('formatDateOfBirth received:', dateStr, 'type:', typeof dateStr); // Debug
+    console.log('formatDateOfBirth received:', dateStr, 'type:', typeof dateStr);
     if (!dateStr) {
       console.log('dateStr is falsy, returning N/A');
       return 'N/A';
     }
     try {
-      // Handle YYYY-MM-DD format (most common from API)
-      // Create date using date string directly - this handles YYYY-MM-DD format correctly
       const dateParts = String(dateStr).split('-');
       if (dateParts.length === 3) {
-        // YYYY-MM-DD format
-        const date = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]); // Month is 0-indexed
+        const date = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
         if (!isNaN(date.getTime())) {
           return date.toLocaleDateString('en-US', { 
             year: 'numeric', 
@@ -119,7 +111,6 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
           });
         }
       }
-      // Fallback: try parsing as-is
       const date = new Date(dateStr);
       if (!isNaN(date.getTime())) {
         return date.toLocaleDateString('en-US', { 
@@ -128,7 +119,6 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
           day: 'numeric' 
         });
       }
-      // If all parsing fails, return the raw string
       console.warn('Could not parse date:', dateStr);
       return String(dateStr);
     } catch (e) {
@@ -162,7 +152,6 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
   const handleEditSave = async (e) => {
     e.preventDefault();
     
-    // Validate that all required fields are not empty
     if (!editData.email || !editData.email.trim()) {
       setUpdateError('Email cannot be empty.');
       return;
@@ -197,10 +186,8 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
         photo_url: null
       });
 
-      // Update local user state
       setUser(updatedUser);
       
-      // Call the callback to update parent state
       if (onSaveProfile) {
         onSaveProfile(updatedUser);
       }
@@ -231,7 +218,6 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
   const handlePwdSave = async (e) => {
     e.preventDefault();
     
-    // Validate fields
     if (!pwdData.current || !pwdData.current.trim()) {
       setPwdError('Current password cannot be empty.');
       return;
@@ -255,12 +241,10 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
     try {
       await updatePassword(pwdData.current, pwdData.next);
       
-      // Password updated successfully - reset form and close modal
       setPwdData({ current: '', next: '', confirm: '' });
       setShowPwd({ current: false, next: false, confirm: false });
       setPasswordOpen(false);
       
-      // Call callback to handle logout (for security, user must login again)
       if (onPasswordUpdated) {
         onPasswordUpdated();
       }
@@ -288,7 +272,6 @@ const Profile = ({ user: initialUser, onEditProfile, onUpdatePassword, onDeleteA
     try {
       await deleteUser();
       
-      // Call the callback to handle logout/navigation
       if (onDeleteAccount) {
         onDeleteAccount();
       }

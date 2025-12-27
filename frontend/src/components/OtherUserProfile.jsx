@@ -1,67 +1,56 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import avatarDefault from '../assets/avatar-default.svg';
 import './OtherUserProfile.css';
+import { getUserByUsername, getUserCommunities } from '../services/api';
 
 const OtherUserProfile = ({ user, onOpenCommunity }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [userData, setUserData] = useState(null);
+  const [userCommunities, setUserCommunities] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  if (!user) return <div className="other-user-profile-page"><div className="profile-card">No user found.</div></div>;
-  
-  const { email, name, surname, username, profession, dateOfBirth } = user;
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (!user || !user.username) {
+        setIsLoading(false);
+        return;
+      }
 
-  // Always use default avatar icon
-  const displayPhoto = avatarDefault;
+      try {
+        setIsLoading(true);
+        setError(null);
 
-  // Mock user's communities data
-  const userCommunities = useMemo(() => {
-    const communities = [
-      {
-        title: `${user.username} • Youth Coding Lab`,
-        description:
-          'Weekly after-school program at Çankaya Science Center where volunteers help teens build dashboards for the Ankara Marathon charity drive.',
-      },
-      {
-        title: `${user.username} • Open Streets Ankara`,
-        description:
-          'Coordinates Sunday bike rides with Ankara Metropolitan Municipality and introduced traffic-calming pop-ups along Tunalı Hilmi in April 2025.',
-      },
-      {
-        title: `${user.username} • Refugee Language Exchange`,
-        description:
-          'Matches Turkish and Syrian neighbors for conversation hours, collecting 600 vocabulary cards published online for newcomers.',
-      },
-      {
-        title: `${user.username} • Sustainable Campus Forum`,
-        description:
-          'Brings together student clubs tracking energy use and secured a grant to retrofit dormitory lighting with smart sensors in autumn 2024.',
-      },
-      {
-        title: `${user.username} • Community Science Nights`,
-        description:
-          'Hosts hands-on experiments in local libraries and partnered with TED University physics faculty to demo low-cost lab kits.',
-      },
-      {
-        title: `${user.username} • Inclusive Design Roundtable`,
-        description:
-          'Runs quarterly critiques for accessibility advocates and produced a shared checklist now adopted by three Ankara NGOs.',
-      },
-      {
-        title: `${user.username} • Civic Data Commons`,
-        description:
-          'Maintains open datasets on public transit punctuality while volunteers built dashboards highlighting late-night service gaps after citizen feedback.',
-      },
-      {
-        title: `${user.username} • Tech for Heritage Labs`,
-        description:
-          'Digitizes historical archives with 3D scanning weekends and collaborated with the Museum of Anatolian Civilizations on a virtual exhibit.',
-      },
-    ];
+        // Fetch user details
+        const fetchedUser = await getUserByUsername(user.username);
+        setUserData(fetchedUser);
 
-    return communities.map((community, index) => ({
-      id: index + 1,
-      ...community,
-    }));
-  }, [user.username]);
+        // Fetch user's communities
+        const communities = await getUserCommunities(fetchedUser.id);
+        
+        // Map communities to match expected format
+        const mappedCommunities = communities.map(community => ({
+          id: community.id,
+          title: community.title,
+          description: community.description,
+          creator_id: community.creator_id,
+          creator_name: community.creator_name,
+          createdAt: community.created_at,
+          updatedAt: community.updated_at,
+          tabs: community.tabs || [],
+        }));
+
+        setUserCommunities(mappedCommunities);
+      } catch (err) {
+        console.error('Error fetching user data:', err);
+        setError(err.message || 'Failed to load user profile');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserData();
+  }, [user?.username]);
 
   const filteredCommunities = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -76,6 +65,37 @@ const OtherUserProfile = ({ user, onOpenCommunity }) => {
   }, [searchQuery, userCommunities]);
 
   const truncate = (text, max) => (text.length > max ? text.slice(0, max) + '…' : text);
+
+  if (isLoading) {
+    return (
+      <div className="other-user-profile-page">
+        <div className="profile-container">
+          <div className="profile-card">
+            <div style={{ textAlign: 'center', padding: '2rem' }}>
+              <p>Loading user profile...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !userData) {
+    return (
+      <div className="other-user-profile-page">
+        <div className="profile-container">
+          <div className="profile-card">
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#ef4444' }}>
+              <p>{error || 'No user found.'}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const { email, name, surname, username, profession, dateOfBirth } = userData;
+  const displayPhoto = avatarDefault;
 
   return (
     <div className="other-user-profile-page">
@@ -130,7 +150,7 @@ const OtherUserProfile = ({ user, onOpenCommunity }) => {
               ))
             ) : (
               <div className="no-results">
-                <p>No communities found matching your search.</p>
+                <p>{userCommunities.length === 0 ? 'This user has not created any communities yet.' : 'No communities found matching your search.'}</p>
               </div>
             )}
           </div>

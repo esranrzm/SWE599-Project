@@ -10,4 +10,7 @@ pydantic[email]
 pydantic-settings
 email-validator
 requests
+httpx
+pytest
+pytest-asyncio
 

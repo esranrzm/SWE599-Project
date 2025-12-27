@@ -6,27 +6,20 @@ import os
 import logging
 import time
 
-from app.routers import auth, communities
+from app.routers import auth, communities, admin
 from app.database import engine, Base
 
-# Load environment variables
 load_dotenv()
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Import models to ensure they're registered with Base
-from app.models import User, BlacklistedToken, Community  # noqa: F401
+from app.models import User, BlacklistedToken, Community, CommunityTab, InputContribution 
 
-# Create database tables automatically when the app starts
-# Note: The DATABASE must exist in PostgreSQL first (create it manually or use scripts/create_database.py)
-# This line only creates the TABLES within the existing database
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="SWE599 Project API", version="1.0.0")
 
-# Request logging middleware
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         start_time = time.time()
@@ -57,6 +50,7 @@ app.add_middleware(LoggingMiddleware)
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(communities.router, prefix="/api/communities", tags=["communities"])
+app.include_router(admin.router, prefix="/api", tags=["admin"])
 
 @app.get("/")
 def root():

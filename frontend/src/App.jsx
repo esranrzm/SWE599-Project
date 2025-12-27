@@ -5,24 +5,24 @@ import Registration from './components/auth/Registration'
 import MainScreen from './components/community/MainScreen'
 import CommunityDetails from './components/community/CommunityDetails'
 import CreateCommunity from './components/community/CreateCommunity'
+import UpdateCommunity from './components/community/UpdateCommunity'
 import Profile from './components/profile/Profile';
 import MyCommunities from './components/community/MyCommunities';
 import AllUsers from './components/AllUsers';
 import OtherUserProfile from './components/OtherUserProfile';
-import avatarDefault from './assets/avatar-default.svg';
+import AdminDashboard from './components/admin/AdminDashboard';
 import { logoutUser, removeToken, checkSession, getToken, getCommunityById } from './services/api';
 import './App.css'
 
 function App() {
   const [currentView, setCurrentView] = useState('login')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [isLoading, setIsLoading] = useState(true) // Loading state for session check
+  const [isLoading, setIsLoading] = useState(true)
   const [selectedCommunity, setSelectedCommunity] = useState(null)
   const [userProfile, setUserProfile] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
-  // Check for existing session on app load
   useEffect(() => {
     const restoreSession = async () => {
       try {
@@ -30,32 +30,27 @@ function App() {
         const token = getToken();
         
         if (token) {
-          // Try to restore session
           const userData = await checkSession();
           if (userData) {
-            // Valid session found - restore user state
             console.log('Session restored:', userData);
             setUserProfile(userData);
             setIsLoggedIn(true);
             
-            // Navigate to appropriate view based on URL
-            const path = window.location.pathname;
-            if (path === '/' || path === '/main') {
-              setCurrentView('main');
-              window.history.replaceState({ view: 'main' }, '', '/main');
-            } else {
-              // Let the route handler decide
-              setCurrentView('main'); // Default to main if logged in
+            // Redirect admin to dashboard if on admin route
+            if (userData.username === 'admin') {
+              const path = window.location.pathname;
+              if (!path.startsWith('/admin')) {
+                setCurrentView('adminDashboard');
+                window.history.replaceState({ view: 'adminDashboard' }, '', '/admin');
+              }
             }
           } else {
-            // Invalid token - clear it and navigate to login
             console.log('No valid session found - navigating to login');
             setIsLoggedIn(false);
             setCurrentView('login');
             window.history.replaceState({ view: 'login' }, '', '/');
           }
         } else {
-          // No token - navigate to login
           console.log('No auth token found - navigating to login');
           setIsLoggedIn(false);
           setCurrentView('login');
@@ -72,16 +67,14 @@ function App() {
     };
 
     restoreSession();
-  }, []); // Run once on mount
+  }, []);
 
-  // Sync URL <-> view on load and on back/forward
   useEffect(() => {
-    if (isLoading) return; // Don't apply routes while checking session
+    if (isLoading) return;
     
     const applyRoute = () => {
       const path = window.location.pathname
       if (!isLoggedIn) {
-        // If not logged in, always redirect to login (unless on registration)
         if (path.startsWith('/register')) {
           setCurrentView('registration')
           return
@@ -95,6 +88,12 @@ function App() {
       }
 
       if (path === '/main' || path === '/') {
+        // If admin, redirect to admin dashboard
+        if (userProfile && userProfile.username === 'admin') {
+          setCurrentView('adminDashboard')
+          window.history.replaceState({ view: 'adminDashboard' }, '', '/admin')
+          return
+        }
         setCurrentView('main')
         return
       }
@@ -102,35 +101,56 @@ function App() {
         setCurrentView('createCommunity')
         return
       }
+      if (path.startsWith('/community/') && path.includes('/update') && !path.startsWith('/community/create')) {
+        const idStr = path.replace('/community/', '').replace('/update', '')
+        const id = parseInt(idStr, 10)
+        setCurrentView('updateCommunity')
+        const fetchCommunity = async () => {
+          try {
+            const community = await getCommunityById(id);
+            const mappedCommunity = {
+              id: community.id,
+              title: community.title,
+              description: community.description,
+              creator: community.creator_name,
+              creator_id: community.creator_id,
+              createdAt: community.created_at,
+              updatedAt: community.updated_at,
+              tabs: community.tabs || [],
+            };
+            setSelectedCommunity(mappedCommunity);
+          } catch (err) {
+            console.error('Error fetching community:', err);
+            setSelectedCommunity({ id, title: `Community ${id}`, description: 'No description provided.', tabs: [] });
+          }
+        };
+        fetchCommunity();
+        return
+      }
       if (path.startsWith('/community/') && !path.startsWith('/community/create')) {
         const idStr = path.replace('/community/', '')
         const id = parseInt(idStr, 10)
-        // Set view first, then fetch data
         setCurrentView('communityDetails')
-        // Try to fetch community data if we don't have it or it's a different ID
-        if (!selectedCommunity || selectedCommunity.id !== id) {
-          // Fetch community from API
-          const fetchCommunity = async () => {
-            try {
-              const community = await getCommunityById(id);
-              const mappedCommunity = {
-                id: community.id,
-                title: community.title,
-                description: community.description,
-                creator: community.creator_name,
-                creator_id: community.creator_id,
-                createdAt: community.created_at,
-                updatedAt: community.updated_at,
-              };
-              setSelectedCommunity(mappedCommunity);
-            } catch (err) {
-              console.error('Error fetching community:', err);
-              // Fallback to placeholder
-              setSelectedCommunity({ id, title: `Community ${id}`, description: 'No description provided.' });
-            }
-          };
-          fetchCommunity();
-        }
+        const fetchCommunity = async () => {
+          try {
+            const community = await getCommunityById(id);
+            const mappedCommunity = {
+              id: community.id,
+              title: community.title,
+              description: community.description,
+              creator: community.creator_name,
+              creator_id: community.creator_id,
+              createdAt: community.created_at,
+              updatedAt: community.updated_at,
+              tabs: community.tabs || [],
+            };
+            setSelectedCommunity(mappedCommunity);
+          } catch (err) {
+            console.error('Error fetching community:', err);
+            setSelectedCommunity({ id, title: `Community ${id}`, description: 'No description provided.', tabs: [] });
+          }
+        };
+        fetchCommunity();
         return
       }
       if (path.startsWith('/register')) {
@@ -153,7 +173,6 @@ function App() {
         const username = path.replace('/user/', '')
         setSelectedUser((prev) => {
           if (prev && prev.username === username) return prev;
-          // For now, create a placeholder
           return {
             id: Math.random(),
             username: username,
@@ -166,6 +185,17 @@ function App() {
         });
         setCurrentView('otherUserProfile')
         return
+      }
+      if (path.startsWith('/admin')) {
+        // Check if user is admin
+        if (userProfile && userProfile.username === 'admin') {
+          setCurrentView('adminDashboard')
+          return
+        } else {
+          setCurrentView('main')
+          window.history.replaceState({ view: 'main' }, '', '/main')
+          return
+        }
       }
       setCurrentView('main')
     }
@@ -191,40 +221,74 @@ function App() {
     window.history.pushState({ view: 'login' }, '', '/')
   }
 
-  const handleLogin = (userData = null) => {
+  const handleLogin = (userData = null, isAdmin = false) => {
     setIsLoggedIn(true)
     
-    // If user data is provided from API, store it
     if (userData) {
       setUserProfile(userData)
     }
     
-    setCurrentView('main')
-    // Push state to history to allow back navigation
-    window.history.pushState({ view: 'main' }, '', '/main')
+    if (isAdmin) {
+      setCurrentView('adminDashboard')
+      window.history.pushState({ view: 'adminDashboard' }, '', '/admin')
+    } else {
+      setCurrentView('main')
+      window.history.pushState({ view: 'main' }, '', '/main')
+    }
   }
 
   const handleLogout = async () => {
-    // Call backend logout endpoint to blacklist token
     try {
       await logoutUser();
     } catch (error) {
       console.error('Logout API error:', error);
-      // Even if API call fails, proceed with frontend logout
       removeToken();
     }
     
     setIsLoggedIn(false)
     setCurrentView('login')
     setUserProfile(null)
-    // Replace current history entry to prevent back navigation to main screen
     window.history.replaceState({ view: 'login' }, '', '/')
   }
 
-  const handleOpenCommunity = (community) => {
-    setSelectedCommunity(community)
-    setCurrentView('communityDetails')
-    window.history.pushState({ view: 'communityDetails', id: community?.id }, '', `/community/${community?.id || ''}`)
+  const handleOpenCommunity = (community, selectedTabId = null) => {
+    const fetchFullCommunity = async () => {
+      if (community?.id) {
+        try {
+          const fullCommunity = await getCommunityById(community.id);
+            const mappedCommunity = {
+              id: fullCommunity.id,
+              title: fullCommunity.title,
+              description: fullCommunity.description,
+              creator: fullCommunity.creator_name,
+              creator_id: fullCommunity.creator_id,
+              creator_username: fullCommunity.creator_username,
+              creator_email: fullCommunity.creator_email,
+              createdAt: fullCommunity.created_at,
+              updatedAt: fullCommunity.updated_at,
+              tabs: fullCommunity.tabs || [],
+              selectedTabId: selectedTabId, // Pass selected tab ID if provided
+            };
+          setSelectedCommunity(mappedCommunity);
+        } catch (err) {
+          console.error('Error fetching community:', err);
+          setSelectedCommunity({ ...community, selectedTabId });
+        }
+      } else {
+        setSelectedCommunity({ ...community, selectedTabId });
+      }
+    };
+    
+    // Only push to history if we're not already on this community's details page
+    const currentPath = window.location.pathname;
+    const targetPath = `/community/${community?.id || ''}`;
+    
+    if (currentPath !== targetPath) {
+      window.history.pushState({ view: 'communityDetails', id: community?.id }, '', targetPath);
+    }
+    
+    setCurrentView('communityDetails');
+    fetchFullCommunity();
   }
 
   const handleCreateCommunity = () => {
@@ -233,7 +297,6 @@ function App() {
   }
 
   const handleProfileRegistration = (userData) => {
-    // userData comes from API response (already has user info without passwords)
     setUserProfile(userData);
     setIsLoggedIn(true)
     setCurrentView('main')
@@ -257,7 +320,6 @@ function App() {
 
   const handleSaveProfile = (updated) => {
     setUserProfile(updated);
-    // Show success message
     setSuccessMessage('Profile updated successfully!');
     setTimeout(() => {
       setSuccessMessage(null);
@@ -265,8 +327,6 @@ function App() {
   };
 
   const handleDeleteAccount = async () => {
-    // This will be called after successful deletion in Profile component
-    // Clear token and logout
     removeToken();
     setIsLoggedIn(false);
     setCurrentView('login');
@@ -275,15 +335,12 @@ function App() {
   };
 
   const handlePasswordUpdated = () => {
-    // Show success message
     setSuccessMessage('Password updated successfully! Please login again with your new password.');
     
-    // Clear success message after 5 seconds
     setTimeout(() => {
       setSuccessMessage(null);
     }, 5000);
     
-    // Logout user for security (they must login again with new password)
     removeToken();
     setIsLoggedIn(false);
     setCurrentView('login');
@@ -309,35 +366,79 @@ function App() {
   };
 
   const handleCommunityDeleted = (communityTitle) => {
-    // Show success message
     setSuccessMessage(`Community "${communityTitle}" has been deleted successfully.`);
     
-    // Clear success message after 5 seconds
     setTimeout(() => {
       setSuccessMessage(null);
     }, 5000);
     
-    // Navigate to home
-    setCurrentView('main');
-    setSelectedCommunity(null);
-    window.history.pushState({ view: 'main' }, '', '/main');
+    // If admin, redirect to admin dashboard, otherwise to main
+    if (userProfile && userProfile.username === 'admin') {
+      setCurrentView('adminDashboard');
+      setSelectedCommunity(null);
+      window.history.pushState({ view: 'adminDashboard' }, '', '/admin');
+    } else {
+      setCurrentView('main');
+      setSelectedCommunity(null);
+      window.history.pushState({ view: 'main' }, '', '/main');
+    }
   };
 
   const handleCommunityUpdated = (updatedCommunity) => {
-    // Update the selected community with new values
-    setSelectedCommunity(updatedCommunity);
+    const communityWithTabs = {
+      ...updatedCommunity,
+      tabs: updatedCommunity.tabs || selectedCommunity?.tabs || [],
+    };
+    setSelectedCommunity(communityWithTabs);
     
-    // Show success message
     setSuccessMessage(`Community "${updatedCommunity.title}" has been updated successfully.`);
     
-    // Clear success message after 5 seconds
     setTimeout(() => {
       setSuccessMessage(null);
     }, 5000);
   };
 
+  const handleNavigateToUpdate = (community) => {
+    setSelectedCommunity(community);
+    setCurrentView('updateCommunity');
+    // Push to history - browser back button will go back to community details
+    window.history.pushState({ view: 'updateCommunity', id: community?.id }, '', `/community/${community?.id}/update`);
+  };
+
+
+  const handleUpdateSuccess = () => {
+    if (selectedCommunity?.id) {
+      const fetchCommunity = async () => {
+        try {
+          const fullCommunity = await getCommunityById(selectedCommunity.id);
+          const mappedCommunity = {
+            id: fullCommunity.id,
+            title: fullCommunity.title,
+            description: fullCommunity.description,
+            creator: fullCommunity.creator_name,
+            creator_id: fullCommunity.creator_id,
+            creator_username: fullCommunity.creator_username,
+            creator_email: fullCommunity.creator_email,
+            createdAt: fullCommunity.created_at,
+            updatedAt: fullCommunity.updated_at,
+            tabs: fullCommunity.tabs || [],
+          };
+          setSelectedCommunity(mappedCommunity);
+          setSuccessMessage(`Community "${mappedCommunity.title}" has been updated successfully.`);
+          setTimeout(() => {
+            setSuccessMessage(null);
+          }, 5000);
+        } catch (err) {
+          console.error('Error fetching community:', err);
+        }
+      };
+      fetchCommunity();
+    }
+    setCurrentView('communityDetails');
+    window.history.replaceState({ view: 'communityDetails', id: selectedCommunity?.id }, '', `/community/${selectedCommunity?.id || ''}`);
+  };
+
   const renderCurrentView = () => {
-    // Show loading while checking session
     if (isLoading) {
       return (
         <div style={{ 
@@ -364,13 +465,17 @@ function App() {
       case 'profile':
         return <Profile user={userProfile} onSaveProfile={handleSaveProfile} onDeleteAccount={handleDeleteAccount} onPasswordUpdated={handlePasswordUpdated} />;
       case 'communityDetails':
-        return <CommunityDetails community={selectedCommunity} currentUser={userProfile} onDeleteSuccess={handleCommunityDeleted} onCommunityUpdated={handleCommunityUpdated} />
+        return <CommunityDetails community={selectedCommunity} currentUser={userProfile} onDeleteSuccess={handleCommunityDeleted} onCommunityUpdated={handleCommunityUpdated} onSelectUser={handleSelectUser} onNavigateToUpdate={handleNavigateToUpdate} />
+      case 'updateCommunity':
+        return <UpdateCommunity community={selectedCommunity} onUpdateSuccess={handleUpdateSuccess} />
       case 'createCommunity':
         return <CreateCommunity onCommunityCreated={handleOpenCommunity} />
       case 'allUsers':
         return <AllUsers onSelectUser={handleSelectUser} />
       case 'otherUserProfile':
         return <OtherUserProfile user={selectedUser} onOpenCommunity={handleOpenCommunity} />
+      case 'adminDashboard':
+        return <AdminDashboard onOpenCommunity={handleOpenCommunity} onLogout={handleLogout} onNavigateToHome={handleNavigateToHome} />
       default:
         return <Login onNavigateToRegister={handleNavigateToRegister} onLogin={handleLogin} />
     }
@@ -378,7 +483,7 @@ function App() {
 
   return (
     <div className="app">
-      <Header isLoggedIn={isLoggedIn} onLogout={handleLogout}
+      <Header isLoggedIn={isLoggedIn} isAdmin={userProfile && userProfile.username === 'admin'} onLogout={handleLogout}
         onCreateCommunity={handleCreateCommunity}
         onSelectProfile={handleSelectProfile}
         onSelectMyCommunities={handleSelectMyCommunities}

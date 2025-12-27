@@ -1,6 +1,7 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from typing import Optional, List, Dict, Any
 from datetime import date, datetime
+import re
 
 class UserRegistration(BaseModel):
     email: EmailStr
@@ -58,15 +59,138 @@ class ErrorResponse(BaseModel):
     error_code: Optional[str] = None
 
 
+# Input Type Item Schemas
+class InputTypeItemCreate(BaseModel):
+    value: str = Field(..., min_length=1, max_length=500)
+    display_order: int = Field(default=0, ge=0)
+
+class InputTypeItemResponse(BaseModel):
+    id: int
+    value: str
+    display_order: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+# Input Type Schemas
+class InputTypeCreate(BaseModel):
+    id: Optional[int] = None  # None for new inputs, number for existing inputs (original input_id from tab_form_structure)
+    type: str = Field(..., min_length=1, max_length=50)
+    name: str = Field(..., min_length=1, max_length=200)
+    items: List[InputTypeItemCreate] = Field(default_factory=list)
+    display_order: int = Field(default=0, ge=0)
+
+    @field_validator('type')
+    @classmethod
+    def validate_type(cls, v):
+        allowed_types = ['free text', 'dropdown list', 'multiple select', 'date', 'url', 'location']
+        if v not in allowed_types:
+            raise ValueError(f"Input type must be one of: {', '.join(allowed_types)}")
+        return v
+
+    @model_validator(mode='after')
+    def validate_items(self):
+        if self.type in ['dropdown list', 'multiple select']:
+            if not self.items or len(self.items) == 0:
+                raise ValueError(f"Items are required for '{self.type}' input type (at least 1 item)")
+        elif self.type in ['free text', 'date', 'url', 'location']:
+            if self.items and len(self.items) > 0:
+                raise ValueError(f"Items are not allowed for '{self.type}' input type")
+        return self
+
+class InputTypeResponse(BaseModel):
+    id: int
+    type: str
+    name: str
+    creator_name: Optional[str] = None
+    creator_username: Optional[str] = None
+    creator_email: Optional[str] = None
+    display_order: int
+    items: List[InputTypeItemResponse] = []
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+# Tab Schemas
+class CommunityTabCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    color: str = Field(..., min_length=7, max_length=7)
+    description: Optional[str] = Field(None, max_length=1000)
+    inputTypes: List[InputTypeCreate] = Field(default_factory=list, alias="inputTypes")
+    display_order: int = Field(default=0, ge=0)
+
+    @field_validator('color')
+    @classmethod
+    def validate_color(cls, v):
+        # Validate hex color code format: #RRGGBB
+        if not re.match(r'^#[0-9A-Fa-f]{6}$', v):
+            raise ValueError("Color must be a valid hex color code (e.g., #f97316)")
+        return v
+
+    class Config:
+        populate_by_name = True
+
+
+class CommunityTabUpdate(BaseModel):
+    id: Optional[int] = None  # None for new tabs, number for existing tabs
+    name: str = Field(..., min_length=1, max_length=200)
+    color: str = Field(..., min_length=7, max_length=7)
+    description: Optional[str] = Field(None, max_length=1000)
+    inputTypes: List[InputTypeCreate] = Field(default_factory=list, alias="inputTypes")
+    display_order: int = Field(default=0, ge=0)
+
+    @field_validator('color')
+    @classmethod
+    def validate_color(cls, v):
+        # Validate hex color code format: #RRGGBB
+        if not re.match(r'^#[0-9A-Fa-f]{6}$', v):
+            raise ValueError("Color must be a valid hex color code (e.g., #f97316)")
+        return v
+
+    class Config:
+        populate_by_name = True
+
+class CommunityTabResponse(BaseModel):
+    id: int
+    name: str
+    color: str
+    description: Optional[str] = None
+    tab_form_structure: Optional[Dict[str, Any]] = None
+    display_order: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
 class CommunityCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: str = Field(..., min_length=1, max_length=500)
-    # tabs_config will be stored in separate table later, not in communities table
+    tabs: Optional[List[CommunityTabCreate]] = Field(default=None, max_length=10)
+    
+    @field_validator('tabs')
+    @classmethod
+    def validate_tabs_limit(cls, v):
+        if v and len(v) > 10:
+            raise ValueError("Maximum 10 tabs allowed per community")
+        return v
+
 
 
 class CommunityUpdate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: str = Field(..., min_length=1, max_length=500)
+
+
+class CommunityUpdateWithTabs(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(..., min_length=1, max_length=500)
+    tabs: Optional[List[CommunityTabUpdate]] = Field(default=None, max_length=10)
 
 
 class CommunityResponse(BaseModel):
@@ -75,8 +199,38 @@ class CommunityResponse(BaseModel):
     description: str
     creator_id: int
     creator_name: str
+    creator_username: Optional[str] = None
+    creator_email: Optional[str] = None
+    tabs: Optional[List[CommunityTabResponse]] = Field(default=None)
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Community Input Submission Schemas
+class SelectedInputField(BaseModel):
+    value: str
+
+class TabInputSubmission(BaseModel):
+    input_id: int
+    input_title: str
+    input_type: str
+    input_fields: Optional[List[SelectedInputField]] = None
+    selected_input_fields: List[SelectedInputField]
+
+class CommunityInputSubmission(BaseModel):
+    tab_title: str
+    input_creator: str
+    tab_id: int
+    tab_inputs: List[TabInputSubmission]
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+class CommunityInputResponse(BaseModel):
+    message: str
+    input_id: int
 
     class Config:
         from_attributes = True

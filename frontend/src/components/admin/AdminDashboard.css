@@ -1,0 +1,295 @@
+.admin-dashboard {
+  min-height: calc(100vh - 60px);
+  background: #f3f4f6;
+}
+
+.admin-header {
+  background-color: #2c3e50;
+  color: white;
+  padding: 1rem 0;
+  text-align: center;
+}
+
+.admin-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.admin-content {
+  display: flex;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  gap: 2rem;
+}
+
+.admin-sidebar {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1.5rem;
+  min-width: 250px;
+  height: fit-content;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  font-family: 'Brush Script MT', cursive;
+  color: #1f2937;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: #374151;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.nav-item:hover {
+  background: #e5e7eb;
+}
+
+.nav-item.active {
+  background: #1f2937;
+  color: white;
+}
+
+.nav-item svg {
+  flex-shrink: 0;
+}
+
+.admin-main {
+  flex: 1;
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.admin-main h2 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.5rem;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+}
+
+.stat-label {
+  font-size: 1rem;
+  color: #6b7280;
+}
+
+.table-container {
+  max-height: 600px;
+  overflow-y: auto;
+  overflow-x: auto;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: white;
+}
+
+.table-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.table-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+.admin-table thead {
+  background: #f3f4f6;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.admin-table th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: #1f2937;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.admin-table th.sortable-header {
+  user-select: none;
+  transition: background-color 0.2s;
+}
+
+.admin-table th.sortable-header:hover {
+  background-color: #e5e7eb;
+}
+
+.admin-table td {
+  padding: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  color: #374151;
+}
+
+.admin-table td.title-cell {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.admin-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.action-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  margin-right: 0.5rem;
+}
+
+.action-button:hover {
+  background: #f3f4f6;
+}
+
+.action-button.delete-button {
+  color: #dc2626;
+}
+
+.action-button.view-button {
+  color: #1f2937;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.dialog h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.25rem;
+  color: #1f2937;
+}
+
+.dialog p {
+  margin: 0.5rem 0;
+  color: #374151;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  justify-content: flex-end;
+}
+
+.dialog-button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.dialog-button.cancel {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.dialog-button.cancel:hover {
+  background: #e5e7eb;
+}
+
+.dialog-button.delete {
+  background: #dc2626;
+  color: white;
+}
+
+.dialog-button.delete:hover {
+  background: #b91c1c;
+}
+
+.dialog-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+

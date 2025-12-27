@@ -1,18 +1,210 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from sqlalchemy import func, distinct
+from typing import List, Optional, Dict, Any
 import logging
+from datetime import datetime, timedelta
+import httpx
 
 from app.database import get_db
-from app.models import Community, User
-from app.schemas import CommunityCreate, CommunityResponse, CommunityUpdate
+from app.models import Community, User, CommunityTab, InputContribution
+from app.schemas import (
+    CommunityCreate, CommunityResponse, CommunityUpdate, CommunityUpdateWithTabs,
+    CommunityInputSubmission, CommunityInputResponse, SelectedInputField,
+    InputTypeResponse
+)
 from app.dependencies import get_current_user
+from sqlalchemy.orm import joinedload
+import json
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def convert_location_value_to_json_string(value: str) -> str:
+    """
+    Convert location value to JSON string format.
+    If value is already a JSON string, parse and re-stringify it.
+    If value is a dict, convert to JSON string.
+    Otherwise, try to parse as JSON.
+    """
+    if isinstance(value, dict):
+        return json.dumps(value)
+    try:
+        # Try to parse as JSON first
+        parsed = json.loads(value)
+        if isinstance(parsed, dict):
+            return json.dumps(parsed)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # If not JSON, assume it's already a string representation
+    return value
+
+
+def convert_location_value_from_json_string(value: str) -> str:
+    """
+    Convert location JSON string back to string for display.
+    For location type, we keep it as JSON string in the value field.
+    """
+    return value
+
+
+def build_input_list_from_submission(tab_inputs: List[Any], map_input_type_func) -> List[Dict[str, Any]]:
+    """
+    Build input_list JSON structure from CommunityInputSubmission tab_inputs.
+    """
+    input_list = []
+    
+    for tab_input in tab_inputs:
+        input_obj = {
+            "input_title": tab_input.input_title,
+            "input_type": map_input_type_func(tab_input.input_type),
+            "selected_fields": []
+        }
+        
+        # Process selected fields
+        for selected_field in tab_input.selected_input_fields:
+            value = selected_field.value
+            
+            # For location type, ensure value is a JSON string
+            if tab_input.input_type == "location":
+                # Try to parse and validate the location JSON
+                try:
+                    location_data = json.loads(value) if isinstance(value, str) else value
+                    if isinstance(location_data, dict):
+                        # Ensure it has the required fields
+                        location_json = json.dumps({
+                            "country": location_data.get("country", ""),
+                            "city": location_data.get("city", ""),
+                            "address": location_data.get("address", "")
+                        })
+                        input_obj["selected_fields"].append({"value": location_json})
+                    else:
+                        input_obj["selected_fields"].append({"value": value})
+                except (json.JSONDecodeError, TypeError):
+                    # If not valid JSON, wrap it
+                    input_obj["selected_fields"].append({"value": json.dumps({"country": "", "city": "", "address": value})})
+            else:
+                input_obj["selected_fields"].append({"value": value})
+        
+        input_list.append(input_obj)
+    
+    return input_list
+
+
+def convert_input_list_to_input_type_responses(
+    input_contribution: InputContribution,
+    db: Session
+) -> List[InputTypeResponse]:
+    input_list = input_contribution.input_list or []
+    result = []
+    
+    # Try to find the creator user
+    creator_user = db.query(User).filter(User.username == input_contribution.username).first()
+    if not creator_user:
+        # Try to find by full name
+        name_parts = input_contribution.username.strip().split()
+        if len(name_parts) >= 2:
+            creator_user = db.query(User).filter(
+                User.name == name_parts[0],
+                User.surname == " ".join(name_parts[1:])
+            ).first()
+    
+    creator_name = input_contribution.username
+    creator_username = creator_user.username if creator_user else None
+    creator_email = creator_user.email if creator_user else None
+    
+    # Convert each input in input_list to InputTypeResponse format
+    for idx, input_data in enumerate(input_list):
+        input_title = input_data.get("input_title", "")
+        input_type = input_data.get("input_type", "")
+        selected_fields = input_data.get("selected_fields", [])
+        
+        # Map input_type back to database format
+        def map_input_type_back(input_type: str) -> str:
+            type_mapping = {
+                "dropdown": "dropdown list",
+                "multiselect": "multiple select",
+                "free text": "free text",
+                "date": "date",
+                "url": "url",
+                "location": "location"
+            }
+            return type_mapping.get(input_type, input_type)
+        
+        db_input_type = map_input_type_back(input_type)
+        
+        items = []
+        for item_idx, selected_field in enumerate(selected_fields):
+            value = selected_field.get("value", "")
+            
+            items.append({
+                "id": item_idx,
+                "value": value,
+                "display_order": item_idx,
+                "created_at": input_contribution.created_at,
+                "updated_at": input_contribution.updated_at
+            })
+        
+        input_dict = {
+            "id": input_contribution.id,
+            "type": db_input_type,
+            "name": input_title,
+            "creator_name": creator_name,
+            "creator_username": creator_username,
+            "creator_email": creator_email,
+            "display_order": idx,
+            "items": items,
+            "created_at": input_contribution.created_at,
+            "updated_at": input_contribution.updated_at,
+        }
+        
+        result.append(InputTypeResponse.model_validate(input_dict))
+    
+    return result
+
+
+def generate_tab_form_structure(tab_data) -> Optional[Dict[str, Any]]:
+    def map_input_type(input_type: str) -> str:
+        type_mapping = {
+            "dropdown list": "dropdown",
+            "multiple select": "multiselect",
+            "free text": "free text",
+            "date": "date",
+            "url": "url",
+            "location": "location"
+        }
+        return type_mapping.get(input_type, input_type)
+    
+    tab_inputs = []
+    input_types_data = tab_data.inputTypes if hasattr(tab_data, 'inputTypes') and tab_data.inputTypes else []
+    
+    # If no inputs, return None
+    if not input_types_data or len(input_types_data) == 0:
+        return None
+    
+    for input_index, input_data in enumerate(input_types_data):
+        input_obj = {
+            "input_id": input_index,
+            "input_title": input_data.name,
+            "input_type": map_input_type(input_data.type)
+        }
+        
+        # Add input_fields only for dropdown and multiselect
+        if input_data.type in ["dropdown list", "multiple select"]:
+            if input_data.items and len(input_data.items) > 0:
+                input_obj["input_fields"] = [{"value": item.value} for item in input_data.items]
+            else:
+                input_obj["input_fields"] = []
+        else:  # free text or date
+            input_obj["input_fields"] = None
+        
+        tab_inputs.append(input_obj)
+    
+    return {"tab_inputs": tab_inputs}
 
 
 @router.post("/", response_model=CommunityResponse, status_code=status.HTTP_201_CREATED)
@@ -22,6 +214,13 @@ async def create_community(
     db: Session = Depends(get_db)
 ):
     try:
+        # Validate tab limit (maximum 10 tabs)
+        if community_data.tabs and len(community_data.tabs) > 10:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Maximum 10 tabs allowed per community"
+            )
+        
         # Get creator's full name
         creator_name = f"{current_user.name} {current_user.surname}".strip()
         
@@ -34,12 +233,52 @@ async def create_community(
         )
         
         db.add(new_community)
+        db.flush()
+        
+        # Create tabs if provided
+        if community_data.tabs:
+            for tab_order, tab_data in enumerate(community_data.tabs):
+                # Generate tab_form_structure JSON for this tab
+                tab_form_structure = generate_tab_form_structure(tab_data)
+                
+                new_tab = CommunityTab(
+                    community_id=new_community.id,
+                    name=tab_data.name,
+                    color=tab_data.color,
+                    description=tab_data.description,
+                    tab_form_structure=tab_form_structure,
+                    display_order=tab_data.display_order if tab_data.display_order else tab_order
+                )
+                db.add(new_tab)
+        
         db.commit()
         db.refresh(new_community)
         
+        db.refresh(new_community)
+        community_with_tabs = db.query(Community)\
+            .options(
+                joinedload(Community.tabs)
+            )\
+            .filter(Community.id == new_community.id)\
+            .first()
+        
+        # Create response dict with creator info
+        community_dict = {
+            "id": community_with_tabs.id,
+            "title": community_with_tabs.title,
+            "description": community_with_tabs.description,
+            "creator_id": community_with_tabs.creator_id,
+            "creator_name": community_with_tabs.creator_name,
+            "creator_username": current_user.username,
+            "creator_email": current_user.email,
+            "tabs": community_with_tabs.tabs,
+            "created_at": community_with_tabs.created_at,
+            "updated_at": community_with_tabs.updated_at,
+        }
+        
         logger.info(f"Community created: {new_community.id} by user {current_user.id}")
         
-        return CommunityResponse.model_validate(new_community)
+        return CommunityResponse.model_validate(community_dict)
         
     except Exception as e:
         db.rollback()
@@ -56,14 +295,6 @@ async def get_all_communities(
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    """
-    Get all communities with pagination support.
-    
-    - **skip**: Number of communities to skip (for pagination, default: 0)
-    - **limit**: Maximum number of communities to return (default: 100, max: 1000)
-    
-    Returns a list of communities ordered by creation date (newest first).
-    """
     try:
         # Limit the maximum results to prevent abuse
         if limit > 1000:
@@ -74,12 +305,33 @@ async def get_all_communities(
             limit = 100
         
         communities = db.query(Community)\
+            .options(
+                joinedload(Community.tabs)
+            )\
             .order_by(Community.created_at.desc())\
             .offset(skip)\
             .limit(limit)\
             .all()
         
-        return [CommunityResponse.model_validate(community) for community in communities]
+        # Fetch creator info for each community
+        result = []
+        for community in communities:
+            creator_user = db.query(User).filter(User.id == community.creator_id).first()
+            community_dict = {
+                "id": community.id,
+                "title": community.title,
+                "description": community.description,
+                "creator_id": community.creator_id,
+                "creator_name": community.creator_name,
+                "creator_username": creator_user.username if creator_user else None,
+                "creator_email": creator_user.email if creator_user else None,
+                "tabs": community.tabs,
+                "created_at": community.created_at,
+                "updated_at": community.updated_at,
+            }
+            result.append(CommunityResponse.model_validate(community_dict))
+        
+        return result
         
     except Exception as e:
         logger.error(f"Error retrieving communities: {str(e)}")
@@ -96,16 +348,6 @@ async def get_my_communities(
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    """
-    Get all communities created by the current authenticated user.
-    
-    Requires authentication.
-    
-    - **skip**: Number of communities to skip (for pagination, default: 0)
-    - **limit**: Maximum number of communities to return (default: 100, max: 1000)
-    
-    Returns a list of communities created by the current user, ordered by creation date (newest first).
-    """
     try:
         # Limit the maximum results to prevent abuse
         if limit > 1000:
@@ -116,13 +358,33 @@ async def get_my_communities(
             limit = 100
         
         communities = db.query(Community)\
+            .options(
+                joinedload(Community.tabs)
+            )\
             .filter(Community.creator_id == current_user.id)\
             .order_by(Community.created_at.desc())\
             .offset(skip)\
             .limit(limit)\
             .all()
         
-        return [CommunityResponse.model_validate(community) for community in communities]
+        # Create response with creator info
+        result = []
+        for community in communities:
+            community_dict = {
+                "id": community.id,
+                "title": community.title,
+                "description": community.description,
+                "creator_id": community.creator_id,
+                "creator_name": community.creator_name,
+                "creator_username": current_user.username,
+                "creator_email": current_user.email,
+                "tabs": community.tabs,
+                "created_at": community.created_at,
+                "updated_at": community.updated_at,
+            }
+            result.append(CommunityResponse.model_validate(community_dict))
+        
+        return result
         
     except Exception as e:
         logger.error(f"Error retrieving user's communities: {str(e)}")
@@ -139,16 +401,6 @@ async def get_others_communities(
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    """
-    Get all communities created by other users (not the current user).
-    
-    Requires authentication.
-    
-    - **skip**: Number of communities to skip (for pagination, default: 0)
-    - **limit**: Maximum number of communities to return (default: 100, max: 1000)
-    
-    Returns a list of communities created by other users, ordered by creation date (newest first).
-    """
     try:
         # Limit the maximum results to prevent abuse
         if limit > 1000:
@@ -159,13 +411,34 @@ async def get_others_communities(
             limit = 100
         
         communities = db.query(Community)\
+            .options(
+                joinedload(Community.tabs)
+            )\
             .filter(Community.creator_id != current_user.id)\
             .order_by(Community.created_at.desc())\
             .offset(skip)\
             .limit(limit)\
             .all()
         
-        return [CommunityResponse.model_validate(community) for community in communities]
+        # Fetch creator info for each community
+        result = []
+        for community in communities:
+            creator_user = db.query(User).filter(User.id == community.creator_id).first()
+            community_dict = {
+                "id": community.id,
+                "title": community.title,
+                "description": community.description,
+                "creator_id": community.creator_id,
+                "creator_name": community.creator_name,
+                "creator_username": creator_user.username if creator_user else None,
+                "creator_email": creator_user.email if creator_user else None,
+                "tabs": community.tabs,
+                "created_at": community.created_at,
+                "updated_at": community.updated_at,
+            }
+            result.append(CommunityResponse.model_validate(community_dict))
+        
+        return result
         
     except Exception as e:
         logger.error(f"Error retrieving others' communities: {str(e)}")
@@ -175,20 +448,158 @@ async def get_others_communities(
         )
 
 
+@router.get("/me/contributed", response_model=List[CommunityResponse], status_code=status.HTTP_200_OK)
+async def get_contributed_communities(
+    current_user: User = Depends(get_current_user),
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    try:
+        if limit > 1000:
+            limit = 1000
+        if skip < 0:
+            skip = 0
+        if limit < 1:
+            limit = 100
+        
+        user_full_name = f"{current_user.name} {current_user.surname}".strip()
+        user_username = current_user.username
+        
+        # Get distinct community IDs where user has contributed
+        contributed_community_ids = db.query(distinct(InputContribution.space_id))\
+            .filter(
+                (InputContribution.username == user_username) |
+                (InputContribution.username == user_full_name)
+            )\
+            .all()
+        
+        community_ids = [row[0] for row in contributed_community_ids]
+        
+        if not community_ids:
+            return []
+        
+        communities = db.query(Community)\
+            .options(
+                joinedload(Community.tabs)
+            )\
+            .filter(Community.id.in_(community_ids))\
+            .order_by(Community.created_at.desc())\
+            .offset(skip)\
+            .limit(limit)\
+            .all()
+        
+        result = []
+        for community in communities:
+            creator_user = db.query(User).filter(User.id == community.creator_id).first()
+            community_dict = {
+                "id": community.id,
+                "title": community.title,
+                "description": community.description,
+                "creator_id": community.creator_id,
+                "creator_name": community.creator_name,
+                "creator_username": creator_user.username if creator_user else None,
+                "creator_email": creator_user.email if creator_user else None,
+                "tabs": community.tabs,
+                "created_at": community.created_at,
+                "updated_at": community.updated_at,
+            }
+            result.append(CommunityResponse.model_validate(community_dict))
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error retrieving contributed communities: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while retrieving contributed communities: {str(e)}",
+        )
+
+
+@router.get("/user/{user_id}/created", response_model=List[CommunityResponse], status_code=status.HTTP_200_OK)
+async def get_user_communities(
+    user_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    logger.info(f"GET /user/{user_id}/created called with skip={skip}, limit={limit}")
+    try:
+        # Verify user exists
+        logger.info(f"Verifying user with ID {user_id} exists...")
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logger.warning(f"User with ID {user_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User with ID {user_id} not found",
+            )
+        
+        logger.info(f"User found: {user.username}")
+        
+        # Limit the maximum results to prevent abuse
+        if limit > 1000:
+            limit = 1000
+        if skip < 0:
+            skip = 0
+        if limit < 1:
+            limit = 100
+        
+        logger.info(f"Querying database for communities created by user {user_id}...")
+        communities = db.query(Community)\
+            .options(
+                joinedload(Community.tabs)
+            )\
+            .filter(Community.creator_id == user_id)\
+            .order_by(Community.created_at.desc())\
+            .offset(skip)\
+            .limit(limit)\
+            .all()
+        
+        logger.info(f"Found {len(communities)} communities for user {user_id}")
+        # Create response with creator info
+        result = []
+        for community in communities:
+            community_dict = {
+                "id": community.id,
+                "title": community.title,
+                "description": community.description,
+                "creator_id": community.creator_id,
+                "creator_name": community.creator_name,
+                "creator_username": user.username,
+                "creator_email": user.email,
+                "tabs": community.tabs,
+                "created_at": community.created_at,
+                "updated_at": community.updated_at,
+            }
+            result.append(CommunityResponse.model_validate(community_dict))
+        logger.info(f"Returning {len(result)} communities")
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving communities for user {user_id}: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while retrieving user's communities: {str(e)}",
+        )
+
+
 @router.get("/{community_id}", response_model=CommunityResponse, status_code=status.HTTP_200_OK)
 async def get_community_by_id(
     community_id: int,
     db: Session = Depends(get_db)
 ):
-    """
-    Get a community by its ID.
-    
-    - **community_id**: The ID of the community to retrieve
-    
-    Returns the community information if found.
-    """
     try:
-        community = db.query(Community).filter(Community.id == community_id).first()
+        community = db.query(Community)\
+            .options(
+                joinedload(Community.tabs)
+            )\
+            .filter(Community.id == community_id)\
+            .first()
         
         if not community:
             raise HTTPException(
@@ -196,7 +607,24 @@ async def get_community_by_id(
                 detail=f"Community with ID {community_id} not found",
             )
         
-        return CommunityResponse.model_validate(community)
+        # Fetch creator user to get email and username
+        creator_user = db.query(User).filter(User.id == community.creator_id).first()
+        
+        # Create response dict with additional creator info
+        community_dict = {
+            "id": community.id,
+            "title": community.title,
+            "description": community.description,
+            "creator_id": community.creator_id,
+            "creator_name": community.creator_name,
+            "creator_username": creator_user.username if creator_user else None,
+            "creator_email": creator_user.email if creator_user else None,
+            "tabs": community.tabs,
+            "created_at": community.created_at,
+            "updated_at": community.updated_at,
+        }
+        
+        return CommunityResponse.model_validate(community_dict)
         
     except HTTPException:
         raise
@@ -215,17 +643,6 @@ async def update_community(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Update a community by its ID.
-    
-    Requires authentication - only the creator can update their community.
-    
-    - **community_id**: The ID of the community to update
-    - **title**: Updated community title (max 200 characters)
-    - **description**: Updated community description (max 500 characters)
-    
-    Returns the updated community information.
-    """
     try:
         community = db.query(Community).filter(Community.id == community_id).first()
         
@@ -235,11 +652,12 @@ async def update_community(
                 detail=f"Community with ID {community_id} not found",
             )
         
-        # Check if the current user is the creator
-        if community.creator_id != current_user.id:
+        # Check if the current user is the creator or admin
+        is_admin = current_user.username == "admin"
+        if community.creator_id != current_user.id and not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to update this community. Only the creator can update it.",
+                detail="You do not have permission to update this community. Only the creator or admin can update it.",
             )
         
         # Update community fields
@@ -247,11 +665,32 @@ async def update_community(
         community.description = community_data.description
         
         db.commit()
-        db.refresh(community)
+        
+        updated_community = db.query(Community)\
+            .options(
+                joinedload(Community.tabs)
+            )\
+            .filter(Community.id == community_id)\
+            .first()
+        
+        creator_user = db.query(User).filter(User.id == updated_community.creator_id).first()
+        
+        community_dict = {
+            "id": updated_community.id,
+            "title": updated_community.title,
+            "description": updated_community.description,
+            "creator_id": updated_community.creator_id,
+            "creator_name": updated_community.creator_name,
+            "creator_username": creator_user.username if creator_user else None,
+            "creator_email": creator_user.email if creator_user else None,
+            "tabs": updated_community.tabs,
+            "created_at": updated_community.created_at,
+            "updated_at": updated_community.updated_at,
+        }
         
         logger.info(f"Community updated: {community_id} by user {current_user.id}")
         
-        return CommunityResponse.model_validate(community)
+        return CommunityResponse.model_validate(community_dict)
         
     except HTTPException:
         raise
@@ -264,21 +703,13 @@ async def update_community(
         )
 
 
-@router.delete("/{community_id}", status_code=status.HTTP_200_OK)
-async def delete_community(
+@router.put("/{community_id}/update-full", response_model=CommunityResponse, status_code=status.HTTP_200_OK)
+async def update_community_full(
     community_id: int,
+    community_data: CommunityUpdateWithTabs,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Delete a community by its ID.
-    
-    Requires authentication - only the creator can delete their community.
-    
-    - **community_id**: The ID of the community to delete
-    
-    Returns a success message if the community was deleted.
-    """
     try:
         community = db.query(Community).filter(Community.id == community_id).first()
         
@@ -288,11 +719,125 @@ async def delete_community(
                 detail=f"Community with ID {community_id} not found",
             )
         
-        # Check if the current user is the creator
-        if community.creator_id != current_user.id:
+        is_admin = current_user.username == "admin"
+        if community.creator_id != current_user.id and not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to delete this community. Only the creator can delete it.",
+                detail="You do not have permission to update this community. Only the creator or admin can update it.",
+            )
+        
+        # Update community fields
+        community.title = community_data.title
+        community.description = community_data.description
+        
+        # Get existing tabs
+        existing_tabs = db.query(CommunityTab).filter(
+            CommunityTab.community_id == community_id
+        ).all()
+        existing_tab_ids = {tab.id for tab in existing_tabs}
+        
+        # Process tabs
+        if community_data.tabs is not None:
+            new_tab_ids = {tab.id for tab in community_data.tabs if tab.id is not None}
+            
+            tabs_to_delete = existing_tab_ids - new_tab_ids
+            for tab_id in tabs_to_delete:
+                tab_to_delete = db.query(CommunityTab).filter(CommunityTab.id == tab_id).first()
+                if tab_to_delete:
+                    db.delete(tab_to_delete)
+            
+            # Update or create tabs
+            for tab_order, tab_data in enumerate(community_data.tabs):
+                if tab_data.id is not None and tab_data.id in existing_tab_ids:
+                    # Update existing tab
+                    existing_tab = db.query(CommunityTab).filter(CommunityTab.id == tab_data.id).first()
+                    if existing_tab:
+                        existing_tab.name = tab_data.name
+                        existing_tab.color = tab_data.color
+                        existing_tab.description = tab_data.description
+                        existing_tab.display_order = tab_data.display_order if tab_data.display_order else tab_order
+                        
+                        tab_form_structure = generate_tab_form_structure(tab_data)
+                        existing_tab.tab_form_structure = tab_form_structure
+                else:
+                    # Create new tab
+                    tab_form_structure = generate_tab_form_structure(tab_data)
+                    new_tab = CommunityTab(
+                        community_id=community_id,
+                        name=tab_data.name,
+                        color=tab_data.color,
+                        description=tab_data.description,
+                        tab_form_structure=tab_form_structure,
+                        display_order=tab_data.display_order if tab_data.display_order else tab_order
+                    )
+                    db.add(new_tab)
+        
+        db.commit()
+        
+        # Refresh and return updated community
+        db.refresh(community)
+        updated_community = db.query(Community)\
+            .options(
+                joinedload(Community.tabs)
+            )\
+            .filter(Community.id == community_id)\
+            .first()
+        
+        # Fetch creator user to get email and username
+        creator_user = db.query(User).filter(User.id == updated_community.creator_id).first()
+        
+        # Create response dict with creator info
+        community_dict = {
+            "id": updated_community.id,
+            "title": updated_community.title,
+            "description": updated_community.description,
+            "creator_id": updated_community.creator_id,
+            "creator_name": updated_community.creator_name,
+            "creator_username": creator_user.username if creator_user else None,
+            "creator_email": creator_user.email if creator_user else None,
+            "tabs": updated_community.tabs,
+            "created_at": updated_community.created_at,
+            "updated_at": updated_community.updated_at,
+        }
+        
+        logger.info(f"Community fully updated: {community_id} by user {current_user.id}")
+        
+        return CommunityResponse.model_validate(community_dict)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating community {community_id}: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while updating the community: {str(e)}",
+        )
+
+
+@router.delete("/{community_id}", status_code=status.HTTP_200_OK)
+async def delete_community(
+    community_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        community = db.query(Community).filter(Community.id == community_id).first()
+        
+        if not community:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Community with ID {community_id} not found",
+            )
+        
+        # Check if the current user is the creator or admin
+        is_admin = current_user.username == "admin"
+        if community.creator_id != current_user.id and not is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to delete this community. Only the creator or admin can delete it.",
             )
         
         # Delete the community
@@ -314,5 +859,428 @@ async def delete_community(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while deleting the community: {str(e)}",
+        )
+
+
+@router.post("/{community_id}/inputs", response_model=CommunityInputResponse, status_code=status.HTTP_201_CREATED)
+async def submit_community_input(
+    community_id: int,
+    input_data: CommunityInputSubmission,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Verify the tab exists and belongs to the community
+        tab = db.query(CommunityTab).filter(
+            CommunityTab.id == input_data.tab_id,
+            CommunityTab.community_id == community_id
+        ).first()
+        
+        if not tab:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Tab with ID {input_data.tab_id} not found in community {community_id}",
+            )
+        
+        # Map input_type from frontend format to database format
+        def map_input_type(input_type: str) -> str:
+            type_mapping = {
+                "dropdown": "dropdown",
+                "multiselect": "multiselect",
+                "free text": "free text",
+                "date": "date",
+                "url": "url",
+                "location": "location"
+            }
+            return type_mapping.get(input_type, input_type)
+        
+        # Validate that all inputs have at least one selected field
+        for tab_input in input_data.tab_inputs:
+            if not tab_input.selected_input_fields or len(tab_input.selected_input_fields) == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"At least one selection is required for '{tab_input.input_title}'",
+                )
+        
+        # Get creator username from request or current user
+        creator_name = input_data.input_creator or f"{current_user.name} {current_user.surname}".strip()
+        # Use username if creator_name matches current user, otherwise use the provided name
+        if creator_name == f"{current_user.name} {current_user.surname}".strip():
+            username = current_user.username
+        else:
+            # Try to find user by name, otherwise use the name as username
+            name_parts = creator_name.strip().split()
+            if len(name_parts) >= 2:
+                creator_user = db.query(User).filter(
+                    User.name == name_parts[0],
+                    User.surname == " ".join(name_parts[1:])
+                ).first()
+                username = creator_user.username if creator_user else creator_name
+            else:
+                username = creator_name
+        
+        # Build input_list JSON structure
+        input_list = build_input_list_from_submission(input_data.tab_inputs, map_input_type)
+        
+        # Create InputContribution entry
+        new_input_contribution = InputContribution(
+            username=username,
+            tab_id=input_data.tab_id,
+            space_id=community_id,
+            input_list=input_list
+        )
+        db.add(new_input_contribution)
+        db.flush()  # Flush to get the ID
+        
+        db.commit()
+        
+        logger.info(f"Community input submitted: community {community_id}, tab {input_data.tab_id} by user {current_user.id}")
+        
+        return CommunityInputResponse(
+            message="Community input submitted successfully",
+            input_id=new_input_contribution.id
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error submitting community input: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while submitting the community input: {str(e)}",
+        )
+
+
+@router.get("/{community_id}/inputs/count", status_code=status.HTTP_200_OK)
+async def get_community_inputs_count(
+    community_id: int,
+    db: Session = Depends(get_db)
+):
+    try:
+        # Verify the community exists
+        community = db.query(Community).filter(Community.id == community_id).first()
+        if not community:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Community with ID {community_id} not found",
+            )
+        
+        # Count distinct input contributions (each contribution is one submission)
+        count = db.query(func.count(InputContribution.id)).filter(
+            InputContribution.space_id == community_id
+        ).scalar()
+        
+        return {"count": count or 0}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving community inputs count: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while retrieving community inputs count: {str(e)}",
+        )
+
+
+@router.get("/{community_id}/inputs", response_model=List[InputTypeResponse], status_code=status.HTTP_200_OK)
+async def get_community_inputs(
+    community_id: int,
+    tab_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Verify the community exists
+        community = db.query(Community).filter(Community.id == community_id).first()
+        if not community:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Community with ID {community_id} not found",
+            )
+        
+        # Build query for InputContribution
+        query = db.query(InputContribution).filter(
+            InputContribution.space_id == community_id
+        )
+        
+        # Filter by tab if provided
+        if tab_id is not None:
+            # Verify the tab exists and belongs to the community
+            tab = db.query(CommunityTab).filter(
+                CommunityTab.id == tab_id,
+                CommunityTab.community_id == community_id
+            ).first()
+            if not tab:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Tab with ID {tab_id} not found in community {community_id}",
+                )
+            query = query.filter(InputContribution.tab_id == tab_id)
+        
+        # Get all input contributions
+        input_contributions = query.order_by(InputContribution.created_at.desc()).all()
+        
+        # Convert each contribution to InputTypeResponse format
+        result = []
+        for contribution in input_contributions:
+            # Convert input_list to list of InputTypeResponse objects
+            converted_inputs = convert_input_list_to_input_type_responses(contribution, db)
+            result.extend(converted_inputs)
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving community inputs: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while retrieving community inputs: {str(e)}",
+        )
+
+
+@router.put("/{community_id}/inputs/{input_id}", response_model=CommunityInputResponse, status_code=status.HTTP_200_OK)
+async def update_community_input(
+    community_id: int,
+    input_id: int,
+    input_data: CommunityInputSubmission,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Verify the tab exists and belongs to the community
+        tab = db.query(CommunityTab).filter(
+            CommunityTab.id == input_data.tab_id,
+            CommunityTab.community_id == community_id
+        ).first()
+        
+        if not tab:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Tab with ID {input_data.tab_id} not found in community {community_id}",
+            )
+        
+        # Find the input contribution by ID
+        input_contribution = db.query(InputContribution).filter(
+            InputContribution.id == input_id,
+            InputContribution.space_id == community_id,
+            InputContribution.tab_id == input_data.tab_id
+        ).first()
+        
+        if not input_contribution:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Input with ID {input_id} not found",
+            )
+        
+        # Check permissions - verify user is the creator or admin
+        is_admin = current_user.username == "admin"
+        if not is_admin:
+            if input_contribution.username != current_user.username:
+                # Try to match by full name
+                user_full_name = f"{current_user.name} {current_user.surname}".strip()
+                creator_user = db.query(User).filter(User.username == input_contribution.username).first()
+                if creator_user:
+                    creator_full_name = f"{creator_user.name} {creator_user.surname}".strip()
+                    if creator_full_name != user_full_name:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="You do not have permission to update this input. Only the creator or admin can update it.",
+                        )
+                else:
+                    # If we can't find the user, check if username matches the creator name
+                    if input_contribution.username != user_full_name:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="You do not have permission to update this input. Only the creator or admin can update it.",
+                        )
+        
+        # Validate that all inputs have at least one selected field
+        for tab_input in input_data.tab_inputs:
+            if not tab_input.selected_input_fields or len(tab_input.selected_input_fields) == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"At least one selection is required for '{tab_input.input_title}'",
+                )
+        
+        # Map input_type from frontend format
+        def map_input_type(input_type: str) -> str:
+            type_mapping = {
+                "dropdown": "dropdown",
+                "multiselect": "multiselect",
+                "free text": "free text",
+                "date": "date",
+                "url": "url",
+                "location": "location"
+            }
+            return type_mapping.get(input_type, input_type)
+        
+        # Get creator username
+        creator_name = input_data.input_creator or f"{current_user.name} {current_user.surname}".strip()
+        if creator_name == f"{current_user.name} {current_user.surname}".strip():
+            username = current_user.username
+        else:
+            # Try to find user by name
+            name_parts = creator_name.strip().split()
+            if len(name_parts) >= 2:
+                creator_user = db.query(User).filter(
+                    User.name == name_parts[0],
+                    User.surname == " ".join(name_parts[1:])
+                ).first()
+                username = creator_user.username if creator_user else creator_name
+            else:
+                username = creator_name
+        
+        # Build new input_list JSON structure
+        input_list = build_input_list_from_submission(input_data.tab_inputs, map_input_type)
+        
+        # Update the input contribution
+        input_contribution.input_list = input_list
+        input_contribution.username = username
+        # updated_at will be automatically set by the onupdate trigger
+        
+        db.commit()
+        
+        logger.info(f"Community input updated: community {community_id}, tab {input_data.tab_id}, input {input_id} by user {current_user.id}")
+        
+        return CommunityInputResponse(
+            message="Community input updated successfully",
+            input_id=input_contribution.id
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating community input: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while updating the community input: {str(e)}",
+        )
+
+
+@router.delete("/{community_id}/inputs/{input_id}", status_code=status.HTTP_200_OK)
+async def delete_community_input(
+    community_id: int,
+    input_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Find the input contribution by ID
+        input_contribution = db.query(InputContribution).filter(
+            InputContribution.id == input_id,
+            InputContribution.space_id == community_id
+        ).first()
+        
+        if not input_contribution:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Input with ID {input_id} not found",
+            )
+        
+        # Verify the tab belongs to the community
+        tab = db.query(CommunityTab).filter(
+            CommunityTab.id == input_contribution.tab_id,
+            CommunityTab.community_id == community_id
+        ).first()
+        
+        if not tab:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Input does not belong to community {community_id}",
+            )
+        
+        # Check if current user is the creator or admin
+        is_admin = current_user.username == "admin"
+        if not is_admin:
+            if input_contribution.username != current_user.username:
+                # Try to match by full name
+                user_full_name = f"{current_user.name} {current_user.surname}".strip()
+                creator_user = db.query(User).filter(User.username == input_contribution.username).first()
+                if creator_user:
+                    creator_full_name = f"{creator_user.name} {creator_user.surname}".strip()
+                    if creator_full_name != user_full_name:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="You do not have permission to delete this input. Only the creator or admin can delete it.",
+                        )
+                else:
+                    # If we can't find the user, check if username matches the creator name
+                    if input_contribution.username != user_full_name:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="You do not have permission to delete this input. Only the creator or admin can delete it.",
+                        )
+        
+        # Delete the input contribution
+        db.delete(input_contribution)
+        db.commit()
+        
+        logger.info(f"Community input deleted: community {community_id}, input {input_id} by user {current_user.id}")
+        
+        return {
+            "message": "Community input deleted successfully",
+            "input_id": input_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting community input: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while deleting the community input: {str(e)}",
+        )
+
+
+@router.get("/cities/{country}", status_code=status.HTTP_200_OK)
+async def get_cities_by_country(country: str):
+    """
+    Fetch cities for a given country from the external API
+    """
+    try:
+        url = f"https://countriesnow.space/api/v0.1/countries/cities/q?country={country}"
+        headers = {
+            "referer": "http://13.60.88.202:3000/",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("error", True):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=data.get("msg", "Failed to fetch cities")
+                )
+            
+            cities = data.get("data", [])
+            return {
+                "error": False,
+                "msg": f"cities in {country} retrieved",
+                "data": cities
+            }
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Request to cities API timed out"
+        )
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to fetch cities: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Error fetching cities for {country}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal error while fetching cities: {str(e)}"
         )
 

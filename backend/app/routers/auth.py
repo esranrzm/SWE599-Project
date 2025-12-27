@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from typing import List
 import logging
 import traceback
 
@@ -383,3 +384,195 @@ async def delete_user_account(
             detail=f"An error occurred while deleting the account: {str(e)}",
         )
 
+
+@router.get("/users", response_model=List[UserResponse], status_code=status.HTTP_200_OK)
+async def get_all_users(
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all users from the database, excluding the current authenticated user.
+    
+    Requires authentication - the current user will be excluded from the results.
+    
+    - **skip**: Number of users to skip (for pagination)
+    - **limit**: Maximum number of users to return (default: 100, max: 1000)
+    
+    Returns a list of users (excluding the current user).
+    """
+    logger.info(f"GET /users called with skip={skip}, limit={limit} by user {current_user.id}")
+    try:
+        # Limit the maximum results to prevent abuse
+        if limit > 1000:
+            limit = 1000
+        if skip < 0:
+            skip = 0
+        if limit < 1:
+            limit = 100
+        
+        logger.info(f"Querying database for users (excluding user {current_user.id})...")
+        users = db.query(User)\
+            .filter(User.id != current_user.id)\
+            .order_by(User.created_at.desc())\
+            .offset(skip)\
+            .limit(limit)\
+            .all()
+        
+        logger.info(f"Found {len(users)} users (excluding current user)")
+        result = [UserResponse.model_validate(user) for user in users]
+        logger.info(f"Returning {len(result)} users")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error retrieving users: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while retrieving users: {str(e)}",
+        )
+
+
+@router.get("/users/by-name/{name}", response_model=List[UserResponse], status_code=status.HTTP_200_OK)
+async def get_users_by_name(
+    name: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get users by full name (searches in name and surname fields).
+    
+    Public endpoint - no authentication required.
+    
+    - **name**: The full name to search for (e.g., "John Doe" or "John")
+    
+    Returns a list of users matching the name.
+    """
+    logger.info(f"GET /users/by-name/{name} called")
+    try:
+        # Split the name into parts
+        name_parts = name.strip().split()
+        
+        if len(name_parts) == 0:
+            return []
+        
+        # Build query - search for users where name and surname match
+        query = db.query(User)
+        
+        if len(name_parts) == 1:
+            # Single word - search in both name and surname
+            search_term = f"%{name_parts[0]}%"
+            query = query.filter(
+                (User.name.ilike(search_term)) | (User.surname.ilike(search_term))
+            )
+        else:
+            # Multiple words - try to match first word with name and rest with surname
+            first_name = name_parts[0]
+            last_name = " ".join(name_parts[1:])
+            query = query.filter(
+                (User.name.ilike(f"%{first_name}%")) & (User.surname.ilike(f"%{last_name}%"))
+            )
+        
+        users = query.limit(10).all()
+        logger.info(f"Found {len(users)} users matching name '{name}'")
+        return [UserResponse.model_validate(user) for user in users]
+        
+    except Exception as e:
+        logger.error(f"Error retrieving users by name {name}: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while retrieving users: {str(e)}",
+        )
+
+
+@router.get("/users/by-name/{name}", response_model=List[UserResponse], status_code=status.HTTP_200_OK)
+async def get_users_by_name(
+    name: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get users by full name (searches in name and surname fields).
+    
+    Public endpoint - no authentication required.
+    
+    - **name**: The full name to search for (e.g., "John Doe" or "John")
+    
+    Returns a list of users matching the name.
+    """
+    logger.info(f"GET /users/by-name/{name} called")
+    try:
+        # Split the name into parts
+        name_parts = name.strip().split()
+        
+        if len(name_parts) == 0:
+            return []
+        
+        # Build query - search for users where name and surname match
+        query = db.query(User)
+        
+        if len(name_parts) == 1:
+            # Single word - search in both name and surname
+            search_term = f"%{name_parts[0]}%"
+            query = query.filter(
+                (User.name.ilike(search_term)) | (User.surname.ilike(search_term))
+            )
+        else:
+            # Multiple words - try to match first word with name and rest with surname
+            first_name = name_parts[0]
+            last_name = " ".join(name_parts[1:])
+            query = query.filter(
+                (User.name.ilike(f"%{first_name}%")) & (User.surname.ilike(f"%{last_name}%"))
+            )
+        
+        users = query.limit(10).all()
+        logger.info(f"Found {len(users)} users matching name '{name}'")
+        return [UserResponse.model_validate(user) for user in users]
+        
+    except Exception as e:
+        logger.error(f"Error retrieving users by name {name}: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while retrieving users: {str(e)}",
+        )
+
+
+@router.get("/users/{username}", response_model=UserResponse, status_code=status.HTTP_200_OK)
+async def get_user_by_username(
+    username: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get a user by username.
+    
+    Public endpoint - no authentication required.
+    
+    - **username**: The username of the user to retrieve
+    
+    Returns the user information.
+    """
+    logger.info(f"GET /users/{username} called")
+    try:
+        logger.info(f"Querying database for user with username: {username}")
+        user = db.query(User).filter(User.username == username).first()
+        
+        if not user:
+            logger.warning(f"User with username '{username}' not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User with username '{username}' not found",
+            )
+        
+        logger.info(f"Found user: {user.username} (ID: {user.id})")
+        return UserResponse.model_validate(user)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving user {username}: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while retrieving the user: {str(e)}",
+        )

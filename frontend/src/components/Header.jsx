@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './Header.css';
 
-const Header = ({ isLoggedIn, onLogout, onCreateCommunity, onSelectProfile, onSelectMyCommunities, onSelectAllUsers, onNavigateToHome }) => {
+const Header = ({ isLoggedIn, isAdmin, onLogout, onCreateCommunity, onSelectProfile, onSelectMyCommunities, onSelectAllUsers, onNavigateToHome }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -31,8 +31,8 @@ const Header = ({ isLoggedIn, onLogout, onCreateCommunity, onSelectProfile, onSe
     <header className="header">
       <div className="header-content">
         <div className="header-left">
-          <h1 className="header-title">My App</h1>
-          {isLoggedIn && (
+          <h1 className="header-title">ComHub</h1>
+          {isLoggedIn && !isAdmin && (
             <button 
               className="home-button"
               onClick={onNavigateToHome}
@@ -48,7 +48,7 @@ const Header = ({ isLoggedIn, onLogout, onCreateCommunity, onSelectProfile, onSe
           )}
         </div>
         
-        {isLoggedIn && (
+        {isLoggedIn && !isAdmin && (
           <div className="header-right" ref={dropdownRef}>
             <button 
               className="create-button"
@@ -66,26 +66,28 @@ const Header = ({ isLoggedIn, onLogout, onCreateCommunity, onSelectProfile, onSe
               Create Community
             </button>
 
-            <button 
-              className="profile-button"
-              onClick={toggleDropdown}
-              aria-label="User menu"
-              title="User menu"
-            >
-              <span className="profile-icon" aria-hidden="true">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="8" r="4" />
-                  <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
-                </svg>
-              </span>
-              <span className="profile-arrow" aria-hidden="true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </span>
-            </button>
+            {!isAdmin && (
+              <button 
+                className="profile-button"
+                onClick={toggleDropdown}
+                aria-label="User menu"
+                title="User menu"
+              >
+                <span className="profile-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="8" r="4" />
+                    <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+                  </svg>
+                </span>
+                <span className="profile-arrow" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </span>
+              </button>
+            )}
             
-            {isDropdownOpen && (
+            {isDropdownOpen && !isAdmin && (
               <div className="dropdown-menu">
                 <button className="dropdown-item" onClick={() => { setIsDropdownOpen(false); onSelectProfile && onSelectProfile(); }}>
                   <span className="dropdown-icon" aria-hidden="true">
